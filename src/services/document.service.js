@@ -1,0 +1,137 @@
+const { Document, Employee } = require('../models');
+const { AppError } = require('../middleware/error.middleware');
+const { Op } = require('sequelize');
+const logger = require('../utils/logger');
+const { PAGINATION } = require('../utils/constants');
+const cloudinaryService = require('./cloudinary.service');
+
+class DocumentService {
+  /**
+   * Map frontend-friendly document type labels to backend ENUM values.
+   * @param {string} input - Raw type string from the frontend
+   * @returns {string} Valid Document.type ENUM value
+   */
+  _normalizeDocType(input) {
+    if (!input || typeof input !== 'string') return 'other';
+    const raw = input.toLowerCase().trim();
+    const map = {
+      aadhar: 'id_proof', aadhaar: 'id_proof', pan: 'id_proof',
+      'pan card': 'id_proof', voter: 'id_proof', 'voter id': 'id_proof',
+      'driving licence': 'id_proof', 'driving license': 'id_proof',
+      passbook: 'address_proof', 'bank passbook': 'address_proof',
+      bank_proof: 'address_proof', 'bank proof': 'address_proof',
+      photo: 'other', photograph: 'other',
+      certificate: 'certificate', 'offer letter': 'offer_letter',
+      offer_letter: 'offer_letter', contract: 'contract',
+    };
+    return map[raw] || 'other';
+  }
+
+  async getDocuments(employeeId, { page = 1, limit = PAGINATION.DEFAULT_LIMIT, type, status } = {}) {
+    const offset = (page - 1) * limit;
+    const whereClause = { employee_id: employeeId };
+    if (type) whereClause.type = type;
+    if (status) whereClause.status = status;
+
+    const { rows, count } = await Document.findAndCountAll({
+      where: whereClause,
+      order: [['created_at', 'DESC']],
+      limit,
+      offset,
+    });
+
+    return {
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.ceil(count / limit),
+      },
+    };
+  }
+
+  /**
+   * Upload a document — stores the file on Cloudinary and saves metadata in DB.
+   * @param {number} employeeId
+   * @param {Object} fileData - { buffer, originalname, mimetype, size }
+   * @param {Object} metadata - { name, type } (document name and document type)
+   * @returns {Promise<Object>} Created document record
+   */
+  async uploadDocument(employeeId, fileData, metadata = {}) {
+    const { buffer, originalname, mimetype, size } = fileData;
+
+    // Determine resource type — images vs raw (PDFs)
+    const isImage = mimetype.startsWith('image/');
+    const resourceType = isImage ? 'image' : 'raw';
+    const folder = `hrms/documents/employee_${employeeId}`;
+
+    // Upload file buffer to Cloudinary
+    const uploadResult = await cloudinaryService.uploadFile(buffer, {
+      folder,
+      filename: originalname.replace(/\.[^.]+$/, ''), // strip extension
+      resourceType,
+    });
+
+    // Create document record in DB with Cloudinary URL
+    const document = await Document.create({
+      employee_id: employeeId,
+      name: metadata.name || originalname,
+      type: this._normalizeDocType(metadata.type),
+      file_path: uploadResult.secure_url,
+      file_size: uploadResult.bytes || size,
+      mime_type: mimetype,
+      status: 'pending',
+    });
+
+    logger.info(`Document uploaded to Cloudinary by employee ${employeeId}: ${document.name} → ${uploadResult.secure_url}`);
+    return document;
+  }
+
+  async getDocumentById(documentId, employeeId) {
+    const document = await Document.findByPk(documentId);
+    if (!document) throw new AppError('Document not found', 404);
+
+    // Non-admin can only view their own documents
+    const employee = await Employee.findByPk(employeeId);
+    if (employee.role !== 'admin' && employee.role !== 'hr' && document.employee_id !== employeeId) {
+      throw new AppError('Access denied', 403);
+    }
+
+    return document;
+  }
+
+  async verifyDocument(documentId, verifiedBy) {
+    const document = await Document.findByPk(documentId);
+    if (!document) throw new AppError('Document not found', 404);
+
+    await document.update({
+      status: 'verified',
+      verified_by: verifiedBy,
+      verified_at: new Date(),
+    });
+
+    logger.info(`Document ${documentId} verified by ${verifiedBy}`);
+    return document;
+  }
+
+  async deleteDocument(documentId) {
+    const document = await Document.findByPk(documentId);
+    if (!document) throw new AppError('Document not found', 404);
+
+    // Delete from Cloudinary first
+    const filePath = document.file_path;
+    if (filePath) {
+      const extracted = cloudinaryService.extractPublicIdFromUrl(filePath);
+      if (extracted) {
+        await cloudinaryService.deleteFile(extracted.publicId, extracted.resourceType);
+      }
+    }
+
+    await document.destroy();
+    logger.info(`Document ${documentId} deleted (Cloudinary + DB)`);
+    return true;
+  }
+}
+
+module.exports = new DocumentService();

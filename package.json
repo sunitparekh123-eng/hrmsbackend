@@ -1,0 +1,54 @@
+{
+    "name": "hrms-backend",
+    "version": "1.0.0",
+    "description": "HRMS Backend API - Node.js Express with MySQL & Sequelize",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "nodemon src/server.js",
+        "db:sync": "node src/config/database.js --sync",
+        "db:seed": "node src/seeders/seed.js",
+        "db:seed:prod": "node src/seeders/seed_production.js",
+        "db:reset": "node src/seeders/seed.js --reset",
+        "migrate": "npx sequelize-cli db:migrate",
+        "migrate:undo": "npx sequelize-cli db:migrate:undo",
+        "seed:cli": "npx sequelize-cli db:seed:all",
+        "test": "jest --coverage",
+        "lint": "eslint src/"
+    },
+    "keywords": [
+        "hrms",
+        "backend",
+        "express",
+        "mysql",
+        "sequelize"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "bcryptjs": "^2.4.3",
+        "cloudinary": "^2.10.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.5",
+        "express": "^4.21.0",
+        "express-rate-limit": "^7.4.1",
+        "handlebars": "^4.7.9",
+        "helmet": "^8.0.0",
+        "joi": "^17.13.3",
+        "jsonwebtoken": "^9.0.2",
+        "morgan": "^1.10.0",
+        "multer": "^2.1.1",
+        "mysql2": "^3.11.0",
+        "nodemailer": "^8.0.10",
+        "pdfkit": "^0.19.0",
+        "sequelize": "^6.37.3",
+        "winston": "^3.14.2"
+    },
+    "devDependencies": {
+        "eslint": "^9.11.0",
+        "jest": "^29.7.0",
+        "nodemon": "^3.1.7",
+        "sequelize-cli": "^6.6.2",
+        "supertest": "^7.0.0"
+    }
+}

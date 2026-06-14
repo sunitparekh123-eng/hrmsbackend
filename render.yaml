@@ -1,0 +1,75 @@
+services:
+  - type: web
+    name: hrms-backend
+    runtime: node
+    region: singapore   # Closest to India
+    plan: free          # Change to 'starter' ($7/mo) for always-on (free sleeps after 15min)
+    branch: main
+    rootDir: backend    # Subfolder in your repo (adjust if backend is repo root)
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true    # Auto re-deploy on every push to main branch
+
+    # Environment Variables — set these in Render Dashboard → Environment
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000   # Render assigns its own port but this is the fallback
+      - key: API_PREFIX
+        value: /api/v1
+      - key: DB_SYNC_ALTER
+        value: "true"   # Safely add missing columns on first deploy
+      - key: DB_SYNC_FORCE
+        value: "false"  # NEVER set to true in production!
+      - key: DB_LOGGING
+        value: "false"
+      - key: DB_DIALECT
+        value: mysql
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: RATE_LIMIT_MAX
+        value: "500"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: LOG_LEVEL
+        value: info
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: TIMEZONE
+        value: Asia/Kolkata
+
+      # ── SECRETS (set manually in Render Dashboard — DO NOT put real values here) ──
+      - key: DB_HOST
+        sync: false   # Marks as secret — you'll fill this in Render Dashboard
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false

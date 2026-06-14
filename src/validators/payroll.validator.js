@@ -1,0 +1,45 @@
+const Joi = require('joi');
+
+// ── Legacy payslip schemas ──
+const payslipQuerySchema = Joi.object({
+  month: Joi.number().integer().min(1).max(12).optional(),
+  year: Joi.number().integer().min(2020).max(2030).optional(),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+});
+
+// ── Ledger schemas ──
+const updateEntrySchema = Joi.object({
+  absent_days: Joi.number().integer().min(0).max(31).optional(),
+  bonus: Joi.number().min(0).optional(),
+  previous_arrears: Joi.number().min(0).optional(),
+  incentive: Joi.number().min(0).optional(),
+  loan_deduction: Joi.number().min(0).optional(),
+  other_deduction: Joi.number().min(0).optional(),
+  status: Joi.string().valid('Draft', 'Verified', 'Paid', 'Pending Audit').optional(),
+}).min(1);
+
+const updateEntryStatusSchema = Joi.object({
+  status: Joi.string().valid('Draft', 'Verified', 'Paid', 'Pending Audit').required(),
+});
+
+const disburseSchema = Joi.object({
+  mode: Joi.string().valid('Bank Transfer', 'Cash', 'Cheque', 'UPI', 'NEFT').required(),
+  reference: Joi.string().max(100).optional().allow(''),
+  authorizedBy: Joi.string().max(100).required(),
+  remarks: Joi.string().max(500).optional().allow(''),
+});
+
+const historyQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  year: Joi.number().integer().min(2020).max(2030).optional(),
+});
+
+module.exports = {
+  payslipQuerySchema,
+  updateEntrySchema,
+  updateEntryStatusSchema,
+  disburseSchema,
+  historyQuerySchema,
+};

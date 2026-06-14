@@ -1,0 +1,95 @@
+const { verifyAccessToken, verifyRefreshToken } = require('../utils/jwt');
+const { error } = require('../utils/response');
+const { Employee } = require('../models');
+
+/**
+ * Authentication middleware — verifies JWT access token
+ * Attaches decoded user to req.user
+ */
+const authenticate = async (req, res, next) => {
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return error(res, 'Access token is required', 401);
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = verifyAccessToken(token);
+
+    if (!decoded) {
+      return error(res, 'Invalid or expired access token', 401);
+    }
+
+    // Verify employee still exists and is active
+    const employee = await Employee.findByPk(decoded.id, {
+      attributes: ['id', 'emp_code', 'name', 'email', 'role', 'status', 'department', 'designation', 'office_id'],
+    });
+
+    if (!employee) {
+      return error(res, 'Employee not found', 401);
+    }
+
+    if (employee.status !== 'active') {
+      return error(res, 'Account is inactive or suspended', 401);
+    }
+
+    req.employee = employee;
+    next();
+  } catch (err) {
+    return error(res, 'Authentication failed', 401);
+  }
+};
+
+/**
+ * Optional authentication — attaches user if token present, but doesn't block
+ */
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = verifyAccessToken(token);
+      if (decoded) {
+        const employee = await Employee.findByPk(decoded.id, {
+          attributes: ['id', 'emp_code', 'name', 'email', 'role', 'status', 'department', 'designation', 'office_id'],
+        });
+        if (employee && employee.status === 'active') {
+          req.employee = employee;
+        }
+      }
+    }
+    next();
+  } catch (err) {
+    next();
+  }
+};
+
+/**
+ * Refresh token middleware — verifies refresh token from header or body
+ */
+const authenticateRefresh = async (req, res, next) => {
+  try {
+    const refreshToken = req.headers['x-refresh-token'] || req.body.refresh_token;
+    if (!refreshToken) {
+      return error(res, 'Refresh token is required', 401);
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    if (!decoded) {
+      return error(res, 'Invalid or expired refresh token', 401);
+    }
+
+    const employee = await Employee.findByPk(decoded.id);
+    if (!employee || employee.refresh_token !== refreshToken) {
+      return error(res, 'Refresh token does not match', 401);
+    }
+
+    req.employee = employee;
+    next();
+  } catch (err) {
+    return error(res, 'Refresh authentication failed', 401);
+  }
+};
+
+module.exports = { authenticate, optionalAuth, authenticateRefresh };

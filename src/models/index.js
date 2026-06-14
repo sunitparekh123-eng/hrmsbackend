@@ -1,0 +1,143 @@
+const { sequelize } = require('../config/database');
+
+// Import all models
+const Employee = require('./employee.model');
+const Office = require('./office.model');
+const Company = require('./company.model');
+const AttendanceRecord = require('./attendance_record.model');
+const MonthlyAttendance = require('./monthly_attendance.model');
+const LeaveBalance = require('./leave_balance.model');
+const LeaveRequest = require('./leave_request.model');
+const Payslip = require('./payslip.model');
+const SalaryComponent = require('./salary_component.model');
+const Loan = require('./loan.model');
+const LoanPayment = require('./loan_payment.model');
+const PerformanceObjective = require('./performance_objective.model');
+const PerformanceReview = require('./performance_review.model');
+const Document = require('./document.model');
+const Letter = require('./letter.model');
+const Notification = require('./notification.model');
+const PayrollCycle = require('./payroll_cycle.model');
+const PayrollEntry = require('./payroll_entry.model');
+const SalaryStructure = require('./salary_structure.model');
+const SalaryRevision = require('./salary_revision.model');
+
+// ── Define Associations ──
+
+// Employee → Office (works at)
+Employee.belongsTo(Office, { foreignKey: 'office_id', as: 'office' });
+Office.hasMany(Employee, { foreignKey: 'office_id', as: 'employees' });
+
+// Company → Office (multi-company → multi-location hierarchy)
+Company.hasMany(Office, { foreignKey: 'company_id', as: 'offices' });
+Office.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
+// Company → Employee (multi-company hierarchy)
+Company.hasMany(Employee, { foreignKey: 'company_id', as: 'employees' });
+Employee.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+// Employee → AttendanceRecord
+Employee.hasMany(AttendanceRecord, { foreignKey: 'employee_id', as: 'attendanceRecords' });
+AttendanceRecord.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → MonthlyAttendance
+Employee.hasMany(MonthlyAttendance, { foreignKey: 'employee_id', as: 'monthlyAttendances' });
+MonthlyAttendance.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → LeaveBalance
+Employee.hasOne(LeaveBalance, { foreignKey: 'employee_id', as: 'leaveBalance' });
+LeaveBalance.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → LeaveRequest
+Employee.hasMany(LeaveRequest, { foreignKey: 'employee_id', as: 'leaveRequests' });
+LeaveRequest.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+// LeaveRequest → Employee (approver)
+LeaveRequest.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
+Employee.hasMany(LeaveRequest, { foreignKey: 'approved_by', as: 'approvedLeaves' });
+
+// Employee → Payslip
+Employee.hasMany(Payslip, { foreignKey: 'employee_id', as: 'payslips' });
+Payslip.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Payslip → SalaryComponent
+Payslip.hasMany(SalaryComponent, { foreignKey: 'payslip_id', as: 'components' });
+SalaryComponent.belongsTo(Payslip, { foreignKey: 'payslip_id', as: 'payslip' });
+
+// Employee → Loan
+Employee.hasMany(Loan, { foreignKey: 'employee_id', as: 'loans' });
+Loan.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+// Loan → Employee (approver)
+Loan.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
+Employee.hasMany(Loan, { foreignKey: 'approved_by', as: 'approvedLoans' });
+
+// Loan → LoanPayment
+Loan.hasMany(LoanPayment, { foreignKey: 'loan_id', as: 'payments' });
+LoanPayment.belongsTo(Loan, { foreignKey: 'loan_id', as: 'loan' });
+
+// PayrollCycle → PayrollEntry
+PayrollCycle.hasMany(PayrollEntry, { foreignKey: 'cycle_id', as: 'entries' });
+PayrollEntry.belongsTo(PayrollCycle, { foreignKey: 'cycle_id', as: 'cycle' });
+
+// Employee → PayrollEntry
+Employee.hasMany(PayrollEntry, { foreignKey: 'employee_id', as: 'payrollEntries' });
+PayrollEntry.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → PerformanceObjective
+Employee.hasMany(PerformanceObjective, { foreignKey: 'employee_id', as: 'objectives' });
+PerformanceObjective.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → PerformanceReview (employee being reviewed)
+Employee.hasOne(PerformanceReview, { foreignKey: 'employee_id', as: 'performanceReview' });
+PerformanceReview.belongsTo(Employee, { foreignKey: 'employee_id', as: 'reviewedEmployee' });
+// PerformanceReview → Employee (reviewer)
+PerformanceReview.belongsTo(Employee, { foreignKey: 'reviewed_by', as: 'reviewer' });
+Employee.hasMany(PerformanceReview, { foreignKey: 'reviewed_by', as: 'reviewsGiven' });
+
+// Employee → Document
+Employee.hasMany(Document, { foreignKey: 'employee_id', as: 'documents' });
+Document.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → Letter (employee receiving the letter)
+Employee.hasMany(Letter, { foreignKey: 'employee_id', as: 'letters' });
+Letter.belongsTo(Employee, { foreignKey: 'employee_id', as: 'issuedTo' });
+// Letter → Employee (issuer)
+Letter.belongsTo(Employee, { foreignKey: 'issued_by', as: 'issuedBy' });
+Employee.hasMany(Letter, { foreignKey: 'issued_by', as: 'lettersIssued' });
+
+// Employee → Notification
+Employee.hasMany(Notification, { foreignKey: 'employee_id', as: 'notifications' });
+Notification.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → SalaryStructure
+Employee.hasMany(SalaryStructure, { foreignKey: 'employee_id', as: 'salaryStructures' });
+SalaryStructure.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+
+// Employee → SalaryRevision
+Employee.hasMany(SalaryRevision, { foreignKey: 'employee_id', as: 'salaryRevisions' });
+SalaryRevision.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+// SalaryRevision → Employee (approver)
+SalaryRevision.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
+Employee.hasMany(SalaryRevision, { foreignKey: 'approved_by', as: 'approvedRevisions' });
+
+module.exports = {
+  sequelize,
+  Employee,
+  Office,
+  Company,
+  AttendanceRecord,
+  MonthlyAttendance,
+  LeaveBalance,
+  LeaveRequest,
+  Payslip,
+  SalaryComponent,
+  Loan,
+  LoanPayment,
+  PayrollCycle,
+  PayrollEntry,
+  PerformanceObjective,
+  PerformanceReview,
+  Document,
+  Letter,
+  Notification,
+  SalaryStructure,
+  SalaryRevision,
+};
