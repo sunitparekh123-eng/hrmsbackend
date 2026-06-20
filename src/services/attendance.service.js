@@ -1,11 +1,44 @@
-const { AttendanceRecord, MonthlyAttendance, Employee, Office, sequelize } = require('../models');
+const { AttendanceRecord, MonthlyAttendance, Employee, Office, sequelize, Holiday, SystemSetting } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op, literal } = require('sequelize');
 const logger = require('../utils/logger');
 const { GEO_FENCE } = require('../utils/constants');
 const env = require('../config/env');
+const { getHolidaysInMonth, countWorkingDaysInMonth, isHolidayDate } = require('../utils/payrollHelper');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
+
+/**
+ * Returns the set of JS day-of-week numbers that are weekends based on the
+ * stored weekend policy.
+ * 'sunday_only'      → [0]          (Sunday)
+ * 'saturday_sunday'  → [0, 6]       (Sunday, Saturday)
+ */
+async function _getWeekendDays() {
+  try {
+    const setting = await SystemSetting.findByPk('weekend_policy');
+    const policy = setting ? setting.value : 'sunday_only';
+    return policy === 'saturday_sunday' ? [0, 6] : [0];
+  } catch (e) {
+    logger.error(`Failed to read weekend policy, defaulting to sunday_only: ${e.message}`);
+    return [0];
+  }
+}
+
+/**
+ * Checks whether a given YYYY-MM-DD date string falls on an active public holiday.
+ * Returns the holiday name if matched, otherwise null.
+ */
+async function _getHolidayName(dateStr) {
+  const holiday = await Holiday.findOne({
+    where: {
+      is_active: true,
+      start_date: { [Op.lte]: dateStr },
+      end_date: { [Op.gte]: dateStr },
+    },
+  });
+  return holiday ? holiday.name : null;
+}
 
 /**
  * Returns the current local Date object for the target timezone.
@@ -119,6 +152,19 @@ class AttendanceService {
   async punchIn(employeeId, latitude, longitude) {
     const today = new Date();
     const dateStr = getLocalDateString(today);
+
+    // ── Block punch-in on holidays ──
+    const holidayName = await _getHolidayName(dateStr);
+    if (holidayName) {
+      throw new AppError(`Today is a public holiday: ${holidayName}. Punch in is not allowed.`, 403);
+    }
+
+    // ── Block punch-in on weekends ──
+    const weekendDays = await _getWeekendDays();
+    const localToday = getLocalDate(today);
+    if (weekendDays.includes(localToday.getDay())) {
+      throw new AppError('Today is a weekend off. Punch in is not allowed.', 403);
+    }
 
     // Check if already punched in today
     const existingRecord = await AttendanceRecord.findOne({
@@ -294,7 +340,21 @@ class AttendanceService {
     });
 
     const employee = await Employee.findByPk(employeeId);
-    
+
+    // ── Check holiday / weekend blocking ──
+    let disabledReason = null;
+    const holidayName = await _getHolidayName(dateStr);
+    if (holidayName) {
+      disabledReason = `Today is a public holiday: ${holidayName}`;
+    } else {
+      const weekendDays = await _getWeekendDays();
+      const localToday = getLocalDate(today);
+      if (weekendDays.includes(localToday.getDay())) {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        disabledReason = `Today is ${dayNames[localToday.getDay()]} — a weekend off`;
+      }
+    }
+
     // Shift calculations (default 10:00 AM - 6:00 PM)
     const localMins = getLocalMinutesFromMidnight(today);
     const shiftStartMins = timeStringToMinutes(employee ? employee.shift_start_time : null, 600); // 10:00 AM = 600 mins
@@ -317,9 +377,9 @@ class AttendanceService {
     const isPunchedIn = !!(record && record.check_in_time && !record.check_out_time);
     const isPunchedOut = !!(record && record.check_out_time);
 
-    // Punch in is allowed if within the shift window
-    const isPunchInAllowed = isWithinWindow;
-    const isPunchOutAllowed = true;
+    // If holiday/weekend, both punch in and out are disabled
+    const isPunchInAllowed = disabledReason ? false : isWithinWindow;
+    const isPunchOutAllowed = disabledReason ? false : true;
 
     return {
       date: dateStr,
@@ -327,6 +387,7 @@ class AttendanceService {
       isPunchedOut,
       isPunchInAllowed,
       isPunchOutAllowed,
+      disabledReason,
       record: record || null,
     };
   }
@@ -439,8 +500,20 @@ class AttendanceService {
   async getLiveAttendance({ office_id, company_id, search, status: statusFilter, page = 1, limit = 8 } = {}) {
     const today = getLocalDateString(new Date());
 
+    // Check if today is an active public holiday
+    const activeHoliday = await Holiday.findOne({
+      where: {
+        is_active: true,
+        start_date: { [Op.lte]: today },
+        end_date: { [Op.gte]: today }
+      }
+    });
+
+    const weekendDays = await _getWeekendDays();
+    const isWeekend = weekendDays.includes(getLocalDate(new Date()).getDay());
+
     // Build employee where clause
-    const empWhere = { status: 'active' };
+    const empWhere = { status: 'active', role: { [Op.ne]: 'admin' } };
     if (search) {
       empWhere[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -498,7 +571,14 @@ class AttendanceService {
         checkInLat = record.check_in_latitude;
         checkInLon = record.check_in_longitude;
       } else {
-        absentCount++;
+        if (activeHoliday) {
+          status = 'Holiday';
+        } else if (isWeekend) {
+          status = 'Weekend';
+        } else {
+          status = 'Absent';
+          absentCount++;
+        }
       }
 
       return {
@@ -565,7 +645,7 @@ class AttendanceService {
       where.date = { [Op.lte]: to };
     }
 
-    const empWhere = { status: 'active' };
+    const empWhere = { status: 'active', role: { [Op.ne]: 'admin' } };
     if (search) {
       empWhere[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -673,7 +753,7 @@ class AttendanceService {
     const currentMonth = month ? parseInt(month) : localToday.getMonth() + 1;
     const currentYear = year ? parseInt(year) : localToday.getFullYear();
 
-    const empWhere = { status: 'active' };
+    const empWhere = { status: 'active', role: { [Op.ne]: 'admin' } };
     if (search) {
       empWhere[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -720,6 +800,34 @@ class AttendanceService {
       recordMap.get(r.employee_id).set(r.date, r);
     });
 
+    // Get active holidays that fall in this month
+    const holidaysList = await Holiday.findAll({
+      where: {
+        is_active: true,
+        [Op.or]: [
+          {
+            start_date: {
+              [Op.between]: [
+                `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
+                `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
+              ]
+            }
+          },
+          {
+            end_date: {
+              [Op.between]: [
+                `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
+                `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
+              ]
+            }
+          }
+        ]
+      }
+    });
+
+    // Get weekend policy for grid rendering
+    const weekendDaysGrid = await _getWeekendDays();
+
     const rows = employees.map(emp => {
       const empRecords = recordMap.get(emp.id) || new Map();
       const monthly = monthlyMap.get(emp.id);
@@ -735,6 +843,10 @@ class AttendanceService {
         const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dateObj = new Date(currentYear, currentMonth - 1, d);
         const dayOfWeek = dateObj.getDay();
+
+        // Check if date falls on a public holiday
+        const isHoliday = holidaysList.some(h => dateStr >= h.start_date && dateStr <= h.end_date);
+        const isWeekendDay = weekendDaysGrid.includes(dayOfWeek);
 
         const record = empRecords.get(dateStr);
         if (record) {
@@ -752,7 +864,13 @@ class AttendanceService {
             grid += 'P'; presentCount++;
           }
         } else {
-          if (dayOfWeek === 0) { // Sunday
+          // No attendance record for this day
+          const isFutureDate = dateObj > localToday; // future dates haven't happened yet
+          if (isFutureDate) {
+            grid += '-'; // future — not yet recorded
+          } else if (isHoliday) {
+            grid += 'H'; holidayCount++;
+          } else if (isWeekendDay) {
             grid += 'W'; woffCount++;
           } else {
             grid += 'A'; absentCount++;
@@ -895,17 +1013,33 @@ class AttendanceService {
 
   // Private: Update monthly attendance summary
   async _updateMonthlyAttendance(employeeId, dateStr) {
-    const [year, month] = dateStr.split('-').map(Number);
-    const lastDay = new Date(year, month, 0).getDate(); // correct last day of month (28/29/30/31)
+    const [punchYear, punchMonth, punchDay] = dateStr.split('-').map(Number);
+    
+    let year = punchYear;
+    let month = punchMonth;
+    if (punchDay >= 26) {
+      month = punchMonth + 1;
+      if (month > 12) {
+        month = 1;
+        year = punchYear + 1;
+      }
+    }
+    
+    let prevMonthYear = year;
+    let prevMonth = month - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevMonthYear = year - 1;
+    }
+    
+    const cycleStart = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}-26`;
+    const cycleEnd = `${year}-${String(month).padStart(2, '0')}-25`;
 
     const records = await AttendanceRecord.findAll({
       where: {
         employee_id: employeeId,
         date: {
-          [Op.between]: [
-            `${year}-${String(month).padStart(2, '0')}-01`,
-            `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
-          ],
+          [Op.between]: [ cycleStart, cycleEnd ],
         },
       },
     });
@@ -915,8 +1049,25 @@ class AttendanceService {
     const halfDays = records.filter(r => r.status === 'half_day').length;
     const absentDays = records.filter(r => r.status === 'absent').length;
 
-    // Calculate working days (excluding weekends - Sat/Sun)
-    const totalWorkingDays = this._getWorkingDaysInMonth(year, month);
+    // ── Fetch dynamic weekend policy & holidays ──
+    const weekendDays = await _getWeekendDays();
+    const holidays = await getHolidaysInMonth(year, month);
+
+    // Count how many attendance records fall on weekend days
+    let weekendDaysCount = 0;
+    let holidayDaysCount = 0;
+    for (const r of records) {
+      const d = new Date(r.date);
+      const dow = d.getDay();
+      if (weekendDays.includes(dow)) {
+        weekendDaysCount++;
+      } else if (isHolidayDate(r.date, holidays)) {
+        holidayDaysCount++;
+      }
+    }
+
+    // Calculate working days (excluding weekends AND holidays)
+    const totalWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
     const attendancePercentage = totalWorkingDays > 0
       ? Math.round(((presentDays + lateDays + halfDays * 0.5) / totalWorkingDays) * 100)
       : 0;
@@ -929,18 +1080,34 @@ class AttendanceService {
       absent_days: absentDays,
       late_days: lateDays,
       half_days: halfDays,
+      weekend_days: weekendDaysCount,
+      holiday_days: holidayDaysCount,
       total_working_days: totalWorkingDays,
       attendance_percentage: attendancePercentage,
     });
   }
 
-  _getWorkingDaysInMonth(year, month) {
+  /**
+   * Calculate working days in a month, respecting the dynamic weekend policy
+   * AND active holidays.
+   * @param {number} year
+   * @param {number} month  1-indexed
+   * @param {number[]} [weekendDays] - optional pre-fetched weekend days array
+   * @param {Array} [holidays] - optional pre-fetched holidays array
+   */
+  async _getWorkingDaysInMonth(year, month, weekendDays, holidays) {
+    const wDays = weekendDays || await _getWeekendDays();
+    const hols = holidays || await getHolidaysInMonth(month, year);
     let count = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(year, month - 1, day);
-      const dayOfWeek = d.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
+      if (wDays.includes(d.getDay())) continue;
+
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (isHolidayDate(dateStr, hols)) continue;
+
+      count++;
     }
     return count;
   }

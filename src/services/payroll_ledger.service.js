@@ -1,8 +1,10 @@
-const { PayrollCycle, PayrollEntry, Employee, SalaryStructure, Office, sequelize } = require('../models');
+const { PayrollCycle, PayrollEntry, Employee, SalaryStructure, Office, Company, sequelize } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PAGINATION, PT_SLABS } = require('../utils/constants');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
+const notificationService = require('./notification.service');
 
 /**
  * Payroll ledger service — mirrors the frontend's calculateProductionNet() logic.
@@ -27,12 +29,28 @@ const { PAGINATION, PT_SLABS } = require('../utils/constants');
  *   net = totalEarnings - deductions
  */
 class PayrollLedgerService {
-  DAYS_IN_MONTH = 28;
+
+  /**
+   * Compute the dynamic working days denominator for a given month/year.
+   * Cached per instance so multiple calls in the same request reuse the result.
+   */
+  async _getDynamicDaysInMonth(month, year) {
+    const cacheKey = `${year}-${month}`;
+    if (!this._daysCache) this._daysCache = {};
+    if (this._daysCache[cacheKey] != null) return this._daysCache[cacheKey];
+
+    const weekendDays = await getWeekendDays();
+    const holidays = await getHolidaysInMonth(year, month);
+    const workingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
+
+    this._daysCache[cacheKey] = { workingDays, weekendDays, holidays };
+    return this._daysCache[cacheKey];
+  }
 
   // ── Calculation helpers (mirror frontend calculateProductionNet) ──
 
-  _calculateRow(row) {
-    const D = this.DAYS_IN_MONTH;
+  _calculateRow(row, daysInMonth = 28) {
+    const D = daysInMonth;
     const elapsedDays = row._elapsedDays != null ? Math.min(row._elapsedDays, D) : D;
     const payableDays = Math.max(0, elapsedDays - (row.absent_days || 0));
     const fixedGross = Number(row.fixed_gross) || 0;
@@ -132,12 +150,17 @@ class PayrollLedgerService {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
+    // ── Dynamic working days for the current month ──
+    const { workingDays: dynamicDays, weekendDays, holidays } =
+      await this._getDynamicDaysInMonth(currentMonth + 1, currentYear);
+    const elapsedWorkingDays = countElapsedWorkingDays(currentYear, currentMonth + 1, now, null, weekendDays, holidays);
+
     let cycle = await PayrollCycle.findOne({
       where: { month_index: currentMonth, year: currentYear },
       include: [{
         model: PayrollEntry,
         as: 'entries',
-        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }] }],
+        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }] }],
       }],
     });
 
@@ -153,20 +176,25 @@ class PayrollLedgerService {
         include: [{
           model: PayrollEntry,
           as: 'entries',
-          include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }] }],
+          include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }] }],
         }],
       });
     }
 
     // Sync absent days from MonthlyAttendance (source of truth) + add elapsed-day pro-rating
-    const { MonthlyAttendance } = require('../models');
+    const { MonthlyAttendance, Loan } = require('../models');
     const monthlyStats = await MonthlyAttendance.findAll({
       where: { month: currentMonth + 1, year: currentYear },
     });
     const monthlyMap = new Map(monthlyStats.map(m => [m.employee_id, m]));
 
-    // For the current (ongoing) month, prorate salary to today's date
-    const elapsedDays = now.getDate();
+    // Sync active loan EMIs
+    const activeLoans = await Loan.findAll({ where: { status: 'active' } });
+    const loanMap = new Map();
+    activeLoans.forEach(loan => {
+      const currentEmi = loanMap.get(loan.employee_id) || 0;
+      loanMap.set(loan.employee_id, currentEmi + Number(loan.emi_amount));
+    });
 
     const rows = (cycle.entries || []).map(entry => {
       const emp = entry.employee;
@@ -175,23 +203,46 @@ class PayrollLedgerService {
         ? (Number(monthly.absent_days) + Number(monthly.half_days) * 0.5)
         : (entry.absent_days || 0);
 
-      const calculation = this._calculateRow({
+      // Prefer auto-synced loan deduction, fallback to manual entry
+      const syncedLoan = loanMap.get(emp.id);
+      const loanDeduction = syncedLoan !== undefined ? syncedLoan : (Number(entry.loan_deduction) || 0);
+
+      const baseData = {
         ...emp.toJSON(),
         ...entry.toJSON(),
+        loan_deduction: loanDeduction,
         fixed_gross: emp.fixed_gross,
         pf_applicable: emp.pf_applicable,
         pf_ceiling: emp.pf_ceiling,
         esic_applicable: emp.esic_applicable,
         absent_days: absentDays,
-        _elapsedDays: elapsedDays,
-      });
+      };
+
+      // 1. Prorated calculation (Till Today)
+      const calculation = this._calculateRow({
+        ...baseData,
+        _elapsedDays: elapsedWorkingDays,
+      }, dynamicDays);
+
+      // 2. Projected calculation (Full Month Cost assuming no more absences)
+      // For projected, we assume they work all remaining days, so elapsedDays = D.
+      // The only deduction to payable days is the already recorded absentDays.
+      const projectedCalculation = this._calculateRow({
+        ...baseData,
+        _elapsedDays: dynamicDays, // full month elapsed
+      }, dynamicDays);
+
+      // We inject projectedFullMonthCTC and dailyCost directly from the backend
+      const projectedMonthly = projectedCalculation.totalMonthlyCTC;
+      const dailyCost = Math.round(projectedMonthly / dynamicDays);
+      const payableDays = Math.max(0, elapsedWorkingDays - absentDays);
 
       return {
         id: entry.id,
         employeeCode: emp.emp_code,
         name: emp.name,
         location: emp.location || emp.office?.name || 'Unknown',
-        company: emp.company_name || 'Apaar Logistics & Cold Supply Chain Pvt Ltd',
+        company: emp.company?.name || emp.company_name || 'Apaar Logistics & Cold Supply Chain Pvt Ltd',
         designation: emp.designation || '',
         fixedGross: Number(emp.fixed_gross) || 0,
         pfApplicable: emp.pf_applicable || false,
@@ -201,10 +252,14 @@ class PayrollLedgerService {
         bonus: Number(entry.bonus) || 0,
         previousArrears: Number(entry.previous_arrears) || 0,
         incentive: Number(entry.incentive) || 0,
-        loanDeduction: Number(entry.loan_deduction) || 0,
+        loanDeduction: loanDeduction,
         otherDeduction: Number(entry.other_deduction) || 0,
         status: entry.status || cycle.status || 'Draft',
-        elapsedDays,
+        elapsedDays: elapsedWorkingDays,
+        dynamicDays,
+        payableDays,
+        dailyCost,
+        projectedMonthly,
         ...calculation,
       };
     });
@@ -219,7 +274,7 @@ class PayrollLedgerService {
         paid_on: cycle.paid_on,
         disbursement_mode: cycle.disbursement_mode,
         disbursement_reference: cycle.disbursement_reference,
-        elapsedDays,
+        elapsedDays: elapsedWorkingDays,
       },
       rows,
     };
@@ -232,13 +287,16 @@ class PayrollLedgerService {
       include: [{
         model: PayrollEntry,
         as: 'entries',
-        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }] }],
+        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }] }],
       }],
     });
 
     if (!cycle) {
       throw new AppError('Payroll cycle not found', 404);
     }
+
+    // Dynamic working days for the cycle's month (past cycle = full month, no elapsed prorating)
+    const { workingDays: dynamicDays } = await this._getDynamicDaysInMonth(cycle.month_index + 1, cycle.year);
 
     const rows = (cycle.entries || []).map(entry => {
       const emp = entry.employee;
@@ -249,14 +307,14 @@ class PayrollLedgerService {
         pf_applicable: emp.pf_applicable,
         pf_ceiling: emp.pf_ceiling,
         esic_applicable: emp.esic_applicable,
-      });
+      }, dynamicDays);
 
       return {
         id: entry.id,
         employeeCode: emp.emp_code,
         name: emp.name,
         location: emp.location || emp.office?.name || 'Unknown',
-        company: emp.company_name || 'Apaar Logistics & Cold Supply Chain Pvt Ltd',
+        company: emp.company?.name || emp.company_name || 'Apaar Logistics & Cold Supply Chain Pvt Ltd',
         designation: emp.designation || '',
         fixedGross: Number(emp.fixed_gross) || 0,
         pfApplicable: emp.pf_applicable || false,
@@ -294,14 +352,20 @@ class PayrollLedgerService {
       offset: (parseInt(page) - 1) * parseInt(limit),
     });
 
-    const history = rows.map(cycle => {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+
+    const history = await Promise.all(rows.map(async (cycle) => {
       const entries = cycle.entries || [];
       let totalPayout = 0;
       const branchMap = new Map();
 
-      entries.forEach(entry => {
+      // Dynamic working days for this cycle's month (past cycle = full month)
+      const { workingDays: dynamicDays } = await this._getDynamicDaysInMonth(cycle.month_index + 1, cycle.year);
+
+      for (const entry of entries) {
         const emp = entry.employee;
-        if (!emp) return;
+        if (!emp) continue;
         const calc = this._calculateRow({
           ...emp.toJSON(),
           ...entry.toJSON(),
@@ -309,7 +373,7 @@ class PayrollLedgerService {
           pf_applicable: emp.pf_applicable,
           pf_ceiling: emp.pf_ceiling,
           esic_applicable: emp.esic_applicable,
-        });
+        }, dynamicDays);
         totalPayout += calc.net;
 
         const branchName = emp.location || emp.office?.name || 'Unknown';
@@ -319,15 +383,13 @@ class PayrollLedgerService {
         const b = branchMap.get(branchName);
         b.payout += calc.net;
         b.staff += 1;
-      });
+      }
 
       const branchBreakdown = Array.from(branchMap.values()).map(b => ({
         ...b,
         payout: Math.round(b.payout),
       }));
 
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
       const monthName = `${monthNames[cycle.month_index] || cycle.month} ${cycle.year}`;
       const monthId = `${monthNames[cycle.month_index]?.substring(0, 3).toUpperCase() || cycle.month?.substring(0, 3).toUpperCase()}-${cycle.year}`;
 
@@ -364,7 +426,7 @@ class PayrollLedgerService {
         paid_on: cycle.paid_on,
         date: cycle.paid_on || null,
       };
-    });
+    }));
 
     return {
       data: history,
@@ -396,10 +458,29 @@ class PayrollLedgerService {
       throw new AppError(`Invalid status: ${status}. Valid: ${validStatuses.join(', ')}`, 400);
     }
 
-    const entry = await PayrollEntry.findByPk(entryId);
+    const entry = await PayrollEntry.findByPk(entryId, {
+      include: [
+        { model: PayrollCycle, as: 'cycle' }
+      ]
+    });
     if (!entry) throw new AppError('Payroll entry not found', 404);
 
+    const oldStatus = entry.status;
     await entry.update({ status });
+
+    // Trigger Notification if newly marked as Paid
+    if (status === 'Paid' && oldStatus !== 'Paid') {
+      const cycleText = entry.cycle ? `${entry.cycle.month} ${entry.cycle.year}` : 'the recent cycle';
+      await notificationService.createNotification(
+        entry.employee_id,
+        'Salary Disbursed',
+        `Your salary for ${cycleText} has been successfully disbursed.`,
+        'success',
+        'payroll',
+        '/payroll/payslips'
+      );
+    }
+
     return entry;
   }
 
@@ -414,15 +495,31 @@ class PayrollLedgerService {
       paid_on: new Date(),
       disbursement_mode: mode,
       disbursement_reference: reference,
-      disbursement_remarks: remarks,
-      paid_by: authorizedBy,
+      disbursement_remarks: remarks ? `${remarks} (Authorized By: ${authorizedBy})` : `Authorized By: ${authorizedBy}`,
+      paid_by: null,
     });
 
     // Mark all entries as Paid
+    const entries = await PayrollEntry.findAll({ where: { cycle_id: cycleId } });
     await PayrollEntry.update(
       { status: 'Paid' },
       { where: { cycle_id: cycleId } },
     );
+
+    // Send notifications to all employees in this cycle
+    const cycleText = `${cycle.month} ${cycle.year}`;
+    for (const entry of entries) {
+      if (entry.status !== 'Paid') { // Only notify if it wasn't already paid
+        await notificationService.createNotification(
+          entry.employee_id,
+          'Salary Disbursed',
+          `Your salary for ${cycleText} has been successfully disbursed.`,
+          'success',
+          'payroll',
+          '/payroll/payslips'
+        ).catch(e => logger.error(`Failed to send notification for emp ${entry.employee_id}: ${e.message}`));
+      }
+    }
 
     logger.info(`Disbursed payroll cycle ${cycleId} (${cycle.month} ${cycle.year})`);
     return cycle;
@@ -444,8 +541,8 @@ class PayrollLedgerService {
       status: 'Draft',
     });
 
-    // Auto-create entries for all active employees
-    const employees = await Employee.findAll({ where: { status: 'active' } });
+    // Auto-create entries for all active employees (excluding admins)
+    const employees = await Employee.findAll({ where: { status: 'active', role: { [Op.ne]: 'admin' } } });
     const { MonthlyAttendance } = require('../models');
     const monthlyStats = await MonthlyAttendance.findAll({
       where: {

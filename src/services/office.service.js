@@ -52,7 +52,7 @@ class OfficeService {
     if (officeIds.length > 0) {
       const empCounts = await Employee.findAll({
         attributes: ['office_id', [sequelize.fn('COUNT', sequelize.col('Employee.id')), 'employee_count']],
-        where: { office_id: { [Op.in]: officeIds } },
+        where: { office_id: { [Op.in]: officeIds }, role: { [Op.ne]: 'admin' } },
         group: ['office_id'],
         raw: true,
       });
@@ -96,7 +96,7 @@ class OfficeService {
     }
 
     // Attach employee count
-    const employeeCount = await Employee.count({ where: { office_id: id } });
+    const employeeCount = await Employee.count({ where: { office_id: id, role: { [Op.ne]: 'admin' } } });
     const officeJson = office.toJSON();
     officeJson.employee_count = employeeCount;
 
@@ -180,7 +180,7 @@ class OfficeService {
       throw error;
     }
 
-    const employeeCount = await Employee.count({ where: { office_id: id } });
+    const employeeCount = await Employee.count({ where: { office_id: id, role: { [Op.ne]: 'admin' } } });
     if (employeeCount > 0) {
       const error = new Error(
         `Cannot delete — ${employeeCount} employee(s) are still assigned to this location. Reassign them first.`
@@ -202,7 +202,7 @@ class OfficeService {
     const inactive = total - active;
 
     // Total employees across all offices
-    const totalEmployees = await Employee.count({ where: { office_id: { [Op.ne]: null } } });
+    const totalEmployees = await Employee.count({ where: { office_id: { [Op.ne]: null }, role: { [Op.ne]: 'admin' } } });
 
     // Employee count per office
     const perOffice = await Employee.findAll({
@@ -210,7 +210,7 @@ class OfficeService {
         'office_id',
         [sequelize.fn('COUNT', sequelize.col('Employee.id')), 'employee_count'],
       ],
-      where: { office_id: { [Op.ne]: null } },
+      where: { office_id: { [Op.ne]: null }, role: { [Op.ne]: 'admin' } },
       group: ['office_id'],
       raw: true,
     });

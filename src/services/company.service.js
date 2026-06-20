@@ -34,14 +34,14 @@ class CompanyService {
   /**
    * Create a new company entity.
    */
-  async createCompany({ name, address }) {
+  async createCompany({ name, email, phone, website, city, state, address }) {
     const existing = await Company.findOne({ where: { name } });
     if (existing) {
       const err = new Error('A company with this name already exists');
       err.statusCode = 409;
       throw err;
     }
-    const company = await Company.create({ name, address });
+    const company = await Company.create({ name, email, phone, website, city, state, address });
     logger.info(`Company created: ${company.name} (id: ${company.id})`);
     return company;
   }
@@ -49,9 +49,14 @@ class CompanyService {
   /**
    * Update a company.
    */
-  async updateCompany(id, { name, address, is_active }) {
+  async updateCompany(id, { name, email, phone, website, city, state, address, is_active }) {
     const company = await this.getCompanyById(id);
     if (name !== undefined) company.name = name;
+    if (email !== undefined) company.email = email;
+    if (phone !== undefined) company.phone = phone;
+    if (website !== undefined) company.website = website;
+    if (city !== undefined) company.city = city;
+    if (state !== undefined) company.state = state;
     if (address !== undefined) company.address = address;
     if (is_active !== undefined) company.is_active = is_active;
     await company.save();

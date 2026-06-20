@@ -1,4 +1,7 @@
 const letterService = require('../services/letter.service');
+const letterPdfService = require('../services/letter_pdf.service');
+const emailService = require('../services/email.service');
+const { LetterTemplate, Employee, Office, Company } = require('../models');
 const { success, paginated } = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -67,6 +70,178 @@ class LetterController {
       return success(res, 'Letter updated', result, 200);
     } catch (err) {
       logger.error(`Update letter error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  async generateLetterPDF(req, res, next) {
+    try {
+      // Support both GET (query params) and POST (body)
+      const params = req.method === 'GET' ? req.query : req.body;
+      const { templateId, template_id, employeeId, employee_id, content, title: bodyTitle, type: bodyType, candidateData } = params;
+      const resolvedTemplateId = templateId || template_id;
+      const resolvedEmployeeId = employeeId || employee_id;
+
+      let employee = null;
+      if (resolvedEmployeeId) {
+        employee = await Employee.findByPk(resolvedEmployeeId, {
+          include: [
+            { model: Office, as: 'office', attributes: ['name', 'address', 'city', 'state'] },
+            { model: Company, as: 'company', attributes: ['name'] },
+          ],
+        });
+        if (!employee) {
+          return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+      } else if (candidateData) {
+        employee = {
+          id: 'candidate',
+          name: candidateData.name || 'Candidate',
+          emp_code: 'NEW',
+          email: candidateData.email || '',
+          phone: candidateData.phone || '',
+          designation: candidateData.designation || 'TBD',
+          department: candidateData.department || 'TBD',
+          office: { name: candidateData.office || 'Head Office', address: '', city: '', state: '' },
+          company: { name: candidateData.company || 'BP Marketing' }
+        };
+      } else {
+        return res.status(400).json({ success: false, message: 'Either employeeId or candidateData is required' });
+      }
+
+      let template = null;
+      let title = 'Letter';
+      let type = 'general';
+
+      if (resolvedTemplateId) {
+        template = await LetterTemplate.findByPk(resolvedTemplateId);
+        if (template) {
+          title = bodyTitle || template.name;
+          type = bodyType || template.type;
+        }
+      }
+
+      const pdfBuffer = await letterPdfService.generateLetterPDF({
+        content: content || '',
+        fullHtml: req.body.fullHtml,
+        employee,
+        title,
+        type,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="letter-${employee.emp_code || 'employee'}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      return res.send(pdfBuffer);
+    } catch (err) {
+      logger.error(`Generate letter PDF error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  async sendLetterEmail(req, res, next) {
+    try {
+      const { templateId, template_id, employeeId, employee_id, content, fullHtml, title: bodyTitle, type: bodyType, subject, candidateData } = req.body;
+      const resolvedTemplateId = templateId || template_id;
+      const resolvedEmployeeId = employeeId || employee_id;
+
+      let employee = null;
+      if (resolvedEmployeeId) {
+        employee = await Employee.findByPk(resolvedEmployeeId, {
+          include: [
+            { model: Office, as: 'office', attributes: ['name', 'address', 'city', 'state'] },
+            { model: Company, as: 'company', attributes: ['name'] },
+          ],
+        });
+        if (!employee) {
+          return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+      } else if (candidateData) {
+        employee = {
+          id: 'candidate',
+          name: candidateData.name || 'Candidate',
+          emp_code: 'NEW',
+          email: candidateData.email || '',
+          phone: candidateData.phone || '',
+          designation: candidateData.designation || 'TBD',
+          department: candidateData.department || 'TBD',
+          office: { name: candidateData.office || 'Head Office', address: '', city: '', state: '' },
+          company: { name: candidateData.company || 'BP Marketing' }
+        };
+      } else {
+        return res.status(400).json({ success: false, message: 'Either employeeId or candidateData is required' });
+      }
+
+      if (!employee.email) {
+        return res.status(400).json({ success: false, message: 'Recipient has no email address' });
+      }
+
+      let template = null;
+      let title = 'Letter';
+      let type = 'general';
+
+      if (resolvedTemplateId) {
+        template = await LetterTemplate.findByPk(resolvedTemplateId);
+        if (template) {
+          title = bodyTitle || template.name;
+          type = bodyType || template.type;
+        }
+      }
+
+      // Generate PDF
+      const pdfBuffer = await letterPdfService.generateLetterPDF({
+        content: content || '',
+        fullHtml,
+        employee,
+        title,
+        type,
+      });
+
+      let letterId = null;
+      // Save letter record only if it's for a real employee
+      if (resolvedEmployeeId) {
+        const letter = await letterService.issueLetter({
+          employee_id: resolvedEmployeeId,
+          type,
+          title,
+          content: content || '',
+          issued_date: new Date(),
+          status: 'issued',
+        }, req.employee.id);
+        letterId = letter.id;
+      }
+
+      // Send email
+      const emailSubject = subject || `${title} - ${employee.company?.name || 'Company'}`;
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e293b;">${title}</h2>
+          <p>Dear ${employee.name},</p>
+          <p>Please find attached your ${title.toLowerCase()}.</p>
+          <p>If you have any questions, please contact the HR department.</p>
+          <br/>
+          <p style="color: #64748b;">Regards,<br/>HR Department<br/>${employee.company?.name || ''}</p>
+        </div>
+      `;
+
+      const emailResult = await emailService.sendMail({
+        to: employee.email,
+        subject: emailSubject,
+        html: emailHtml,
+        attachments: [{
+          filename: `${type}-${employee.emp_code || 'employee'}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        }],
+      });
+
+      return success(res, 'Letter sent successfully', {
+        letter_id: letterId,
+        email_accepted: emailResult.accepted,
+        email_rejected: emailResult.rejected,
+      }, 200);
+    } catch (err) {
+      logger.error(`Send letter email error: ${err.message}`);
       return next(err);
     }
   }

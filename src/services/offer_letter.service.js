@@ -121,88 +121,98 @@ class OfferLetterService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // ── Header ──
-      doc.fontSize(16).font('Helvetica-Bold').text(this.COMPANY_SHORT, { align: 'center' });
-      doc.fontSize(9).font('Helvetica').text(this.COMPANY_NAME, { align: 'center' });
-      doc.fontSize(8).text(this.COMPANY_ADDRESS, { align: 'center' });
-      doc.moveDown(0.25);
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#1a237e').lineWidth(1.2).stroke();
-      doc.moveDown(0.25);
-
+      // ── Navy Top Bar ──
+      doc.rect(0, 0, doc.page.width, 14).fill('#0f172a');
+      
+      doc.y = 40;
+      doc.x = 60;
+      
+      // ── Header row ──
+      const headerY = doc.y;
+      // Left side
+      doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text(employee.company?.name || this.COMPANY_SHORT, 60, headerY, { continued: false });
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('HUMAN RESOURCES DEPARTMENT', 60, doc.y + 4);
+      
+      // Right side
+      const rightX = doc.page.width - 60 - 150;
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#475569');
+      doc.text(`Ref: APAAR/HR/OL/${employee.emp_code}`, rightX, headerY, { width: 150, align: 'right' });
+      doc.text(`Date: ${issuedDate}`, rightX, headerY + 14, { width: 150, align: 'right' });
+      doc.text(`Page: 1 of 1`, rightX, headerY + 28, { width: 150, align: 'right' });
+      
+      doc.y = Math.max(doc.y, headerY + 42) + 20;
+      
+      // Horizontal line
+      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#0f172a').lineWidth(2).stroke();
+      doc.y += 32;
+      
       // ── Title ──
-      doc.fontSize(13).font('Helvetica-Bold').fillColor('#1a237e').text('OFFER LETTER', { align: 'center' });
-      doc.fillColor('#333');
-      doc.moveDown(0.3);
-
-      // ── Date & Ref ──
-      doc.fontSize(9).font('Helvetica');
-      doc.text(`Date: ${issuedDate}`, { align: 'right' });
-      doc.text(`Ref: APAAR/HR/OL/${employee.emp_code}/${new Date().getFullYear()}`, { align: 'right' });
-      doc.moveDown(0.3);
-
-      // ── Employee Info ──
-      doc.fontSize(10).font('Helvetica-Bold').text('To,');
-      doc.fontSize(10).text(employee.name);
-      if (employee.address) doc.fontSize(9).text(employee.address);
-      doc.moveDown(0.3);
-
-      doc.fontSize(10).font('Helvetica-Bold').text(`Subject: Offer of Employment for the position of ${employee.designation || '_______________'}`);
-      doc.moveDown(0.25);
+      doc.fontSize(15).font('Helvetica-Bold').fillColor('#16a34a').text('OFFER LETTER', 60, doc.y, { align: 'center', underline: true });
+      doc.y += 28;
+      
+      // ── Recipient ──
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('To,', 60, doc.y);
+      doc.font('Helvetica').text(employee.name);
+      doc.text(`${employee.designation || 'TBD'}, ${employee.department || 'TBD'}`);
+      doc.text(`${employee.company?.name || this.COMPANY_NAME} – ${employee.location || this.COMPANY_ADDRESS}`);
+      doc.y += 20;
 
       // ── Body ──
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Dear ${employee.name},`, { lineGap: 2 });
-      doc.moveDown(0.15);
+      doc.fontSize(11).lineGap(6);
+      doc.text(`Dear ${employee.name},`, 60, doc.y);
+      doc.moveDown(0.5);
 
       doc.text(
         `We are pleased to offer you the position of "${employee.designation || '_______________'}" ` +
-        `at ${this.COMPANY_NAME}. We were impressed by your qualifications and believe ` +
+        `at ${employee.company?.name || this.COMPANY_NAME}. We were impressed by your qualifications and believe ` +
         `that your skills and experience will be a valuable addition to our team.`,
-        { lineGap: 4, align: 'justify' },
+        { align: 'justify' }
       );
-      doc.moveDown(0.25);
+      doc.moveDown(0.5);
 
-      doc.text('The terms and conditions of your employment are as follows:', { lineGap: 2 });
-      doc.moveDown(0.25);
+      doc.text('The terms and conditions of your employment are as follows:');
+      doc.moveDown(0.5);
 
       // ── 1. Date of Joining ──
       doc.font('Helvetica-Bold').text('1. Date of Joining:');
       doc.font('Helvetica').text(`   ${dateOfJoining}`);
-      doc.moveDown(0.15);
+      doc.moveDown(0.5);
 
       // ── 2. Location ──
       doc.font('Helvetica-Bold').text('2. Place of Posting:');
       doc.font('Helvetica').text(`   ${employee.location || this.COMPANY_ADDRESS}`);
-      doc.moveDown(0.15);
+      doc.moveDown(0.5);
 
       // ── 3. Compensation ──
       doc.font('Helvetica-Bold').text('3. Compensation Package (Per Month):');
-      doc.moveDown(0.15);
+      doc.moveDown(0.5);
 
       // Salary table
       const tableStartY = doc.y;
       const col1 = 60;
       const col2 = 250;
       const col3 = 400;
-      const rowH = 20;
+      const rowH = 22;
 
       const drawTableHeader = (y) => {
-        doc.rect(50, y, 495, rowH).fill('#1a237e');
+        doc.rect(60, y, 475, rowH).fill('#1a237e');
         doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
-        doc.text('Component', col1, y + 5, { width: col2 - col1 - 10 });
-        doc.text('Monthly (₹)', col3, y + 5, { width: 100, align: 'right' });
-        doc.fillColor('#333');
+        doc.text('Component', col1 + 5, y + 6, { width: col2 - col1 - 10 });
+        doc.text('Monthly (₹)', col3, y + 6, { width: 130, align: 'right' });
+        doc.fillColor('#1e293b');
       };
 
       const drawTableRow = (y, label, value, highlight) => {
         if (highlight) {
-          doc.rect(50, y, 495, rowH).fill('#e8eaf6');
-          doc.fillColor('#333');
+          doc.rect(60, y, 475, rowH).fill('#e8eaf6');
+          doc.fillColor('#1e293b');
+        } else {
+          doc.rect(60, y, 475, rowH).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
         }
         doc.fontSize(9).font('Helvetica');
-        doc.text(label, col1, y + 5, { width: col2 - col1 - 10 });
-        doc.text(value.toLocaleString('en-IN'), col3, y + 5, { width: 100, align: 'right' });
-        doc.fillColor('#333');
+        doc.text(label, col1 + 5, y + 6, { width: col2 - col1 - 10 });
+        doc.text(value.toLocaleString('en-IN'), col3, y + 6, { width: 130, align: 'right' });
+        doc.fillColor('#1e293b');
         return y + rowH;
       };
 
@@ -217,80 +227,75 @@ class OfferLetterService {
       y = drawTableRow(y, 'Gross Salary', gross, true);
 
       // Reset cursor after explicit-coordinate table drawing
-      doc.x = doc.page.margins.left;
+      doc.x = 60;
       doc.y = y;
 
-      doc.moveDown(0.4);
+      doc.moveDown(0.8);
 
       // Gross in words
       doc.fontSize(10).font('Helvetica');
       doc.text(`Gross Salary in Words: ${grossWords}`, { indent: 10 });
-      doc.moveDown(0.25);
+      doc.moveDown(0.8);
 
       // ── 4. Statutory Contributions ──
-      doc.fontSize(10).font('Helvetica-Bold').text('4. Statutory Contributions & CTC:');
-      doc.fontSize(10).font('Helvetica');
+      doc.fontSize(11).font('Helvetica-Bold').text('4. Statutory Contributions & CTC:');
+      doc.fontSize(11).font('Helvetica');
       doc.text(`   • PF: ${employee.pf_applicable !== false ? 'Applicable (12% of Basic)' : 'Not Applicable'}${employee.pf_ceiling ? ' (ceiling ₹15,000)' : ''}`);
       doc.text(`   • ESIC: ${employee.esic_applicable ? 'Applicable' : 'Not Applicable'}  • Professional Tax: As per state slab`);
-      doc.moveDown(0.15);
-      doc.font('Helvetica-Bold').fontSize(10);
+      doc.moveDown(0.3);
+      doc.font('Helvetica-Bold').fontSize(11);
       doc.text(`   Monthly CTC: ₹ ${ctc.toLocaleString('en-IN')} (${salaryToWords(ctc)})`);
-
-      doc.moveDown(0.25);
-
-      // ── 5. Working Days ──
-      doc.fontSize(10).font('Helvetica-Bold').text('5. Working Days:');
-      doc.fontSize(10).font('Helvetica').text(`   ${effectiveWorkDays} working days per month. Loss of Pay (LOP) calculated proportionally.`);
-      doc.moveDown(0.15);
-
-      // ── 6. Probation ──
-      doc.fontSize(10).font('Helvetica-Bold').text('6. Probation Period:');
-      doc.fontSize(10).font('Helvetica').text('   6 months from date of joining. Upon successful completion, employment will be confirmed in writing.');
-      doc.moveDown(0.15);
-
-      // ── 7. Leave ──
-      doc.fontSize(10).font('Helvetica-Bold').text('7. Leave Entitlement:');
-      doc.fontSize(10).font('Helvetica').text('   As per company policy. Details available on the HRMS portal after onboarding.');
-      doc.moveDown(0.15);
-
-      // ── 8. Notice Period ──
-      doc.fontSize(10).font('Helvetica-Bold').text('8. Notice Period:');
-      doc.fontSize(10).font('Helvetica').text('   During probation: 15 days. After confirmation: 30 days or salary in lieu thereof.');
-      doc.moveDown(0.25);
-
-      // ── Acceptance note ──
-      doc.fontSize(10).font('Helvetica');
-      doc.text('Please confirm your acceptance by signing and returning a copy, and acknowledging through the HRMS portal.', { lineGap: 3, align: 'justify' });
-      doc.moveDown(0.2);
-      doc.text('We look forward to a long and mutually beneficial association. Welcome aboard!');
-      doc.moveDown(0.6);
-
-      // ── Signature ──
-      doc.fontSize(10).font('Helvetica-Bold').text('For ' + this.COMPANY_NAME);
-      doc.moveDown(1);
-      doc.fontSize(10).text('_______________________________');
-      doc.fontSize(9).font('Helvetica').text('(Authorized Signatory)');
-      doc.moveDown(0.2);
-      doc.fontSize(10).text('Date: _______________    Place: _______________');
 
       doc.moveDown(0.8);
 
-      // ── Acceptance Section ──
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#1a237e').lineWidth(0.5).stroke();
-      doc.moveDown(0.25);
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1a237e').text('ACCEPTANCE', { align: 'center' });
-      doc.fillColor('#333');
-      doc.moveDown(0.25);
+      // ── 5. Working Days ──
+      doc.fontSize(11).font('Helvetica-Bold').text('5. Working Days:');
+      doc.fontSize(11).font('Helvetica').text(`   ${effectiveWorkDays} working days per month. Loss of Pay (LOP) calculated proportionally.`);
+      doc.moveDown(0.5);
 
-      doc.fontSize(10).font('Helvetica');
-      doc.text('I, _______________________________, hereby accept the above terms and conditions of employment.');
+      // ── 6. Probation ──
+      doc.fontSize(11).font('Helvetica-Bold').text('6. Probation Period:');
+      doc.fontSize(11).font('Helvetica').text('   6 months from date of joining. Upon successful completion, employment will be confirmed in writing.');
       doc.moveDown(0.5);
-      doc.text('Signature: _______________    Date: _______________    Place: _______________');
+
+      // ── 7. Leave ──
+      doc.fontSize(11).font('Helvetica-Bold').text('7. Leave Entitlement:');
+      doc.fontSize(11).font('Helvetica').text('   As per company policy. Details available on the HRMS portal after onboarding.');
       doc.moveDown(0.5);
+
+      // ── 8. Notice Period ──
+      doc.fontSize(11).font('Helvetica-Bold').text('8. Notice Period:');
+      doc.fontSize(11).font('Helvetica').text('   During probation: 15 days. After confirmation: 30 days or salary in lieu thereof.');
+      doc.moveDown(0.8);
+
+      // ── Acceptance note ──
+      doc.fontSize(11).font('Helvetica');
+      doc.text('Please confirm your acceptance by signing and returning a copy, and acknowledging through the HRMS portal.', { align: 'justify' });
+      doc.moveDown(0.5);
+      doc.text('We look forward to a long and mutually beneficial association. Welcome aboard!');
+      
+      // ── Signatures (Variant1 Style) ──
+      doc.y += 60;
+      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
+      doc.y += 40;
+      
+      const sigY = doc.y;
+      
+      // Left signature
+      doc.moveTo(60, sigY).lineTo(180, sigY).strokeColor('#0f172a').lineWidth(2).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('AUTHORISED SIGNATORY', 60, sigY + 6);
+      doc.fontSize(9).font('Helvetica').fillColor('#64748b').text('HR Manager', 60, sigY + 18);
+      
+      // Right signature
+      const rightSigX = doc.page.width - 60 - 120;
+      doc.moveTo(rightSigX, sigY).lineTo(rightSigX + 120, sigY).strokeColor('#0f172a').lineWidth(2).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('EMPLOYEE SIGNATURE', rightSigX, sigY + 6);
+      doc.fontSize(9).font('Helvetica').fillColor('#64748b').text(employee.name, rightSigX, sigY + 18);
 
       // ── Footer ──
-      doc.fontSize(8).font('Helvetica').fillColor('#888');
-      doc.text(`This is a computer-generated document. | ${this.COMPANY_NAME} | Generated on ${issuedDate}`, { align: 'center' });
+      const footerY = doc.page.height - 30;
+      doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor('#f1f5f9').lineWidth(1).stroke();
+      doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text(`${employee.company?.name || this.COMPANY_NAME} Pvt. Ltd. | ${employee.office?.city || 'City'}, ${employee.office?.state || 'State'} | hr@company.com | +91-XXXXX XXXXX`, 60, footerY, { align: 'center' });
 
       doc.end();
     });

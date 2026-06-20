@@ -1,8 +1,9 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const bcrypt = require('bcryptjs');
-const { sequelize, Office, Company, Employee, LeaveBalance, AttendanceRecord, LeaveRequest, Payslip, SalaryComponent, Loan, PerformanceObjective, PerformanceReview, Document, Letter, Notification, SalaryStructure } = require('../models');
+const { sequelize, Office, Company, Employee, LeaveBalance, AttendanceRecord, LeaveRequest, Payslip, SalaryComponent, Loan, PerformanceObjective, PerformanceReview, Document, Letter, Notification, SalaryStructure, TourExpense, TourExpensePolicy, Holiday, SystemSetting } = require('../models');
 const logger = require('../utils/logger');
+const { getWeekendDays, getHolidaysInMonth, isHolidayDate } = require('../utils/payrollHelper');
 
 const seed = async () => {
   try {
@@ -18,10 +19,10 @@ const seed = async () => {
     // 1. COMPANIES (must seed first — FK dependency for offices & employees)
     // ──────────────────────────────────────────────
     const companies = await Company.bulkCreate([
-      { name: 'BP Marketing', address: '12/3, MG Road, Vijay Nagar, Indore, MP 452010' },
-      { name: 'Apaar Logistics', address: 'Plot 45, Transport Nagar, Ratlam, MP 457001' },
-      { name: 'AE', address: 'Sector 5, Noida, UP 201301' },
-      { name: 'PJ', address: 'Industrial Area, Phase 2, Gurgaon, HR 122018' },
+      { name: 'BP Marketing', email: 'hr@bpmarketing.com', phone: '+91-9876543210', website: 'www.bpmarketing.com', city: 'Indore', state: 'MP', address: '12/3, MG Road, Vijay Nagar, Indore, MP 452010' },
+      { name: 'Apaar Logistics', email: 'hr@apaar.com', phone: '+91-8888888888', website: 'www.apaarlogistics.com', city: 'Ratlam', state: 'MP', address: 'Plot 45, Transport Nagar, Ratlam, MP 457001' },
+      { name: 'AE', email: 'careers@ae.com', phone: '+91-7777777777', website: 'www.ae.com', city: 'Noida', state: 'UP', address: 'Sector 5, Noida, UP 201301' },
+      { name: 'PJ', email: 'info@pj.com', phone: '+91-6666666666', website: 'www.pj.com', city: 'Gurgaon', state: 'HR', address: 'Industrial Area, Phase 2, Gurgaon, HR 122018' },
     ]);
     logger.info(`✅ Created ${companies.length} companies`);
 
@@ -184,6 +185,27 @@ const seed = async () => {
     logger.info(`✅ Created ${leaveBalanceData.length} leave balances (single-type EL)`);
 
     // ──────────────────────────────────────────────
+    // 4b. SYSTEM SETTINGS (weekend policy)
+    // ──────────────────────────────────────────────
+    await SystemSetting.upsert({ key: 'weekend_policy', value: 'sunday_only' });
+    logger.info('✅ Created system setting: weekend_policy = sunday_only');
+
+    // ──────────────────────────────────────────────
+    // 4c. HOLIDAYS (must exist before attendance seeding)
+    // ──────────────────────────────────────────────
+    const holidays = [
+      { name: "Republic Day", start_date: "2026-01-26", end_date: "2026-01-26", days_count: 1, is_active: true, is_custom: false },
+      { name: "Holi Festival", start_date: "2026-03-25", end_date: "2026-03-26", days_count: 2, is_active: true, is_custom: false },
+      { name: "Eid-ul-Fitr", start_date: "2026-03-21", end_date: "2026-03-21", days_count: 1, is_active: false, is_custom: false },
+      { name: "Independence Day", start_date: "2026-08-15", end_date: "2026-08-15", days_count: 1, is_active: true, is_custom: false },
+      { name: "Diwali Grand Festival", start_date: "2026-11-08", end_date: "2026-11-11", days_count: 4, is_active: true, is_custom: false },
+      { name: "Christmas Week", start_date: "2026-12-25", end_date: "2026-12-26", days_count: 2, is_active: true, is_custom: false },
+    ];
+    await Holiday.bulkCreate(holidays);
+    const activeHolidays = holidays.filter(h => h.is_active);
+    logger.info(`✅ Created ${holidays.length} holidays (${activeHolidays.length} active)`);
+
+    // ──────────────────────────────────────────────
     // 5. ATTENDANCE RECORDS (Current Month)
     // ──────────────────────────────────────────────
     const currentYear = now.getFullYear();
@@ -191,13 +213,41 @@ const seed = async () => {
     const today = now.getDate();
     const attendanceRecords = [];
 
+    // Fetch dynamic weekend policy & holidays for attendance seeding
+    const weekendDays = await getWeekendDays();
+    const seededHolidays = await getHolidaysInMonth(currentMonth + 1, currentYear);
+
     for (const emp of activeEmployees) {
       for (let day = 1; day <= today; day++) {
         const d = new Date(currentYear, currentMonth, day);
         const dayOfWeek = d.getDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) continue; // Skip weekends
+        if (weekendDays.includes(dayOfWeek)) continue; // Skip weekends per policy
 
         const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        if (isHolidayDate(dateStr, seededHolidays)) {
+          attendanceRecords.push({
+            employee_id: emp.id,
+            date: dateStr,
+            status: 'holiday',
+            check_in_time: null,
+            check_out_time: null,
+            total_hours: null,
+            total_minutes: null,
+            late_by_minutes: 0,
+            early_exit_minutes: null,
+            check_in_distance: null,
+            check_out_distance: null,
+            check_in_latitude: null,
+            check_in_longitude: null,
+            check_out_latitude: null,
+            check_out_longitude: null,
+            check_in_method: 'web',
+            overtime_minutes: 0,
+            remarks: 'Public Holiday',
+          });
+          continue;
+        }
 
         // 85% chance of being present
         const isPresent = Math.random() > 0.15;
@@ -411,6 +461,98 @@ const seed = async () => {
     ];
     await Notification.bulkCreate(notificationData);
     logger.info(`✅ Created ${notificationData.length} notifications`);
+
+    // ──────────────────────────────────────────────
+    // 14. TOUR EXPENSE POLICIES
+    // ──────────────────────────────────────────────
+    const policyRules = [
+      { label: "Air Travel (Economy)",   limit_detail: "₹ 12,000 / trip",    note: "Business class requires VP approval", is_general_rule: false },
+      { label: "Hotel Stay",             limit_detail: "₹ 3,500 / night",    note: "Metro cities: ₹ 5,000 / night",      is_general_rule: false },
+      { label: "Meals & Per Diem",       limit_detail: "₹ 800 / day",        note: "Receipts mandatory above ₹ 300",     is_general_rule: false },
+      { label: "Local Conveyance",       limit_detail: "₹ 500 / day",        note: "Cab receipts required",              is_general_rule: false },
+      { label: "Fuel / Own Vehicle",     limit_detail: "₹ 8 / km",           note: "Log sheet mandatory",                is_general_rule: false },
+      { label: "Client Entertainment",   limit_detail: "₹ 5,000 / occasion", note: "Manager approval required",          is_general_rule: false },
+      { label: "General Rules",          limit_detail: "N/A",                note: "",                                   is_general_rule: true,   general_rules_text: "All claims must be submitted within 7 days of tour completion. Receipts are mandatory for all expenses above ₹ 200. Claims submitted after 15 days will not be reimbursed without HOD approval. Advance settlement must be done within 3 days of return." }
+    ];
+    await TourExpensePolicy.bulkCreate(policyRules);
+    logger.info(`✅ Created ${policyRules.length} tour expense policies`);
+
+    // ──────────────────────────────────────────────
+    // 15. TOUR EXPENSES
+    // ──────────────────────────────────────────────
+    const tourExpenses = [
+      {
+        claim_code: "TE001", employee_id: 14, // Arjun Menon
+        purpose: "Client visit – Mumbai", from_location: "Indore", to_location: "Mumbai",
+        start_date: "2026-05-05", end_date: "2026-05-07", amount: 14250,
+        status: "approved", category: "Travel (Air/Train/Bus)",
+        receipts: [
+          { id: "R1", name: "flight_ticket.pdf", size: "245 KB", type: "PDF" },
+          { id: "R2", name: "hotel_invoice.pdf", size: "128 KB", type: "PDF" },
+          { id: "R3", name: "meal_receipt.jpg",  size: "84 KB",  type: "IMG" },
+        ],
+        remarks: "Client meeting successful.", approved_by: 1, approved_at: new Date()
+      },
+      {
+        claim_code: "TE002", employee_id: 2, // Priya Sharma
+        purpose: "Vendor meeting – Delhi", from_location: "Mumbai", to_location: "Delhi",
+        start_date: "2026-05-10", end_date: "2026-05-11", amount: 9800,
+        status: "pending", category: "Hotel / Accommodation",
+        receipts: [
+          { id: "R4", name: "train_ticket.pdf", size: "112 KB", type: "PDF" },
+          { id: "R5", name: "hotel_bill.pdf",   size: "95 KB",  type: "PDF" },
+        ],
+        remarks: "Vendor negotiation completed."
+      },
+      {
+        claim_code: "TE003", employee_id: 6, // Rahul Verma
+        purpose: "Conference – Pune", from_location: "Indore", to_location: "Pune",
+        start_date: "2026-04-22", end_date: "2026-04-24", amount: 18500,
+        status: "approved", category: "Travel (Air/Train/Bus)",
+        receipts: [
+          { id: "R6", name: "flight_pune.pdf",  size: "200 KB", type: "PDF" },
+          { id: "R7", name: "hotel_pune.pdf",   size: "150 KB", type: "PDF" },
+          { id: "R8", name: "conf_fee.pdf",     size: "60 KB",  type: "PDF" },
+          { id: "R9", name: "taxi_receipt.jpg", size: "45 KB",  type: "IMG" },
+        ],
+        remarks: "Tech conference attendance.", approved_by: 1, approved_at: new Date()
+      },
+      {
+        claim_code: "TE004", employee_id: 17, // Kavita Das
+        purpose: "Training – Bhopal", from_location: "Indore", to_location: "Bhopal",
+        start_date: "2026-05-14", end_date: "2026-05-14", amount: 2100,
+        status: "rejected", category: "Local Conveyance",
+        receipts: [{ id: "R10", name: "fuel_receipt.jpg", size: "30 KB", type: "IMG" }],
+        remarks: "Day trip for training.", approved_by: 1, approved_at: new Date(),
+        rejected_reason: "Receipts insufficient. Please resubmit with detailed fuel log."
+      },
+      {
+        claim_code: "TE005", employee_id: 12, // Rohit Malhotra
+        purpose: "Depot audit – Surat", from_location: "Indore", to_location: "Surat",
+        start_date: "2026-05-01", end_date: "2026-05-03", amount: 11600,
+        status: "approved", category: "Fuel & Vehicle",
+        receipts: [
+          { id: "R11", name: "fuel_log.pdf",    size: "88 KB", type: "PDF" },
+          { id: "R12", name: "toll_receipt.jpg",size: "22 KB", type: "IMG" },
+          { id: "R13", name: "hotel_surat.pdf", size: "110 KB",type: "PDF" },
+        ],
+        remarks: "Annual depot audit.", approved_by: 1, approved_at: new Date()
+      },
+      {
+        claim_code: "TE006", employee_id: 9, // Meera Nair
+        purpose: "GST audit – Hyderabad", from_location: "Indore", to_location: "Hyderabad",
+        start_date: "2026-05-16", end_date: "2026-05-17", amount: 21000,
+        status: "pending", category: "Hotel / Accommodation",
+        receipts: [
+          { id: "R14", name: "flight_hyd.pdf",  size: "195 KB", type: "PDF" },
+          { id: "R15", name: "hotel_hyd.pdf",   size: "140 KB", type: "PDF" },
+          { id: "R16", name: "gst_docs.pdf",    size: "320 KB", type: "PDF" },
+        ],
+        remarks: "Statutory GST audit visit."
+      },
+    ];
+    await TourExpense.bulkCreate(tourExpenses);
+    logger.info(`✅ Created ${tourExpenses.length} tour expenses`);
 
     // ──────────────────────────────────────────────
     // SUMMARY

@@ -15,6 +15,10 @@ const dashboardRoutes = require('./dashboard.routes');
 const companyRoutes = require('./company.routes');
 const officeRoutes = require('./office.routes');
 const configRoutes = require('./config.routes');
+const tourExpenseRoutes = require('./tour_expense.routes');
+const holidayRoutes = require('./holiday.routes');
+const reportRoutes = require('./report.routes');
+const signatoryRoutes = require('./signatory.routes');
 
 // Health check is already in app.js at root level
 // API routes mounted at /api in app.js
@@ -28,10 +32,14 @@ router.use('/performance', performanceRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/documents', documentRoutes);
 router.use('/letters', letterRoutes);
+router.use('/signatories', signatoryRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/companies', companyRoutes);
 router.use('/offices', officeRoutes);
 router.use('/config', configRoutes);
+router.use('/tour-expenses', tourExpenseRoutes);
+router.use('/holidays', holidayRoutes);
+router.use('/reports', reportRoutes);
 
 module.exports = router;

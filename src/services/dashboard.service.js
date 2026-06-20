@@ -1,6 +1,7 @@
 const { Employee, AttendanceRecord, MonthlyAttendance, LeaveBalance, LeaveRequest, Payslip, SalaryStructure, Loan, Notification, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { PT_SLABS } = require('../utils/constants');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 
@@ -30,41 +31,7 @@ function calcBreakdown(fixedGross, workingDays = 26, absentDays = 0, elapsedDays
   return { basic, hra, other, payableDays, effectiveDays };
 }
 
-/**
- * Calculate effective elapsed working days for the current month,
- * respecting the employee's date_of_joining.
- *
- * - If joining is in the future                    → 0 days (not joined yet)
- * - If joining is in a previous month              → today.getDate() (full month so far)
- * - If joining is this month (mid-month joiner)    → today.getDate() - joiningDay + 1
- */
-function calcElapsedDays(today, dateOfJoining) {
-  if (!dateOfJoining) return today.getDate(); // no joining date set — use full elapsed
-
-  // Compare date-parts only (YYYY-MM-DD) to avoid UTC/IST timezone issues
-  // DB stores date as '2026-06-15'; new Date() may parse it as UTC midnight
-  const dojStr = typeof dateOfJoining === 'string'
-    ? dateOfJoining.slice(0, 10)
-    : dateOfJoining.toISOString().slice(0, 10);
-
-  const todayYear  = today.getFullYear();
-  const todayMonth = today.getMonth() + 1; // 1-indexed
-  const todayDay   = today.getDate();
-  const todayStr   = `${todayYear}-${String(todayMonth).padStart(2,'0')}-${String(todayDay).padStart(2,'0')}`;
-
-  // Joining date is in the future
-  if (dojStr > todayStr) return 0;
-
-  const [dojYear, dojMonth, dojDay] = dojStr.split('-').map(Number);
-
-  // Joining was in a previous month — use all elapsed days of current month
-  if (dojYear < todayYear || (dojYear === todayYear && dojMonth < todayMonth)) {
-    return todayDay;
-  }
-
-  // Joining is this month — count from joining day to today (inclusive)
-  return todayDay - dojDay + 1;
-}
+// calcElapsedDays removed as countElapsedWorkingDays now handles Dates natively
 
 function calcPT(gross) {
   for (const slab of PT_SLABS) {
@@ -101,7 +68,12 @@ async function computeLivePayslip(employeeId, currentMonth, currentYear, monthly
   const pfEmployerRate = Number(str?.pf_employer_rate ?? 0.12);
   const esicEmployeeRate = Number(str?.esic_employee_rate ?? 0.0075);
   const esicEmployerRate = Number(str?.esic_employer_rate ?? 0.0325);
-  const workingDays = str?.effective_work_days || 26;
+
+  // ── Dynamic working days from weekend policy + holidays ──
+  const weekendDays = await getWeekendDays();
+  const holidays = await getHolidaysInMonth(currentMonth, currentYear);
+  const workingDays = countWorkingDaysInMonth(currentYear, currentMonth, weekendDays, holidays);
+
   const conveyance = Number(str?.conveyance) || 0;
   const medicalAllowance = Number(str?.medical_allowance) || 0;
 
@@ -112,7 +84,9 @@ async function computeLivePayslip(employeeId, currentMonth, currentYear, monthly
 
   // Pro-rate to today, respecting the employee's joining date
   const today = new Date();
-  const elapsedDays = calcElapsedDays(today, emp.date_of_joining);
+  
+  // Convert calendar-based elapsed days to working-day-based elapsed days
+  const elapsedDays = countElapsedWorkingDays(currentYear, currentMonth, today, emp.date_of_joining, weekendDays, holidays);
 
   // Employee hasn't joined yet — return a zero payslip
   if (elapsedDays === 0) {
@@ -326,9 +300,9 @@ class DashboardService {
     const currentMonth = month;
     const currentYear = year;
 
-    // Total employees by status
-    const totalEmployees = await Employee.count();
-    const activeEmployees = await Employee.count({ where: { status: 'active' } });
+    // Total employees by status (excluding admin)
+    const totalEmployees = await Employee.count({ where: { role: { [Op.ne]: 'admin' } } });
+    const activeEmployees = await Employee.count({ where: { status: 'active', role: { [Op.ne]: 'admin' } } });
 
     // Today's attendance
     const todayPresent = await AttendanceRecord.count({
@@ -344,10 +318,10 @@ class DashboardService {
     // Active loans
     const activeLoans = await Loan.count({ where: { status: 'active' } });
 
-    // Department-wise count
+    // Department-wise count (excluding admin)
     const departmentStats = await Employee.findAll({
       attributes: ['department', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
-      where: { status: 'active' },
+      where: { status: 'active', role: { [Op.ne]: 'admin' } },
       group: ['department'],
       raw: true,
     });

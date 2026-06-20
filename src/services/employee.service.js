@@ -25,7 +25,11 @@ class EmployeeService {
     const whereClause = {};
 
     if (department) whereClause.department = department;
-    if (role) whereClause.role = role;
+    if (role) {
+      whereClause.role = role;
+    } else {
+      whereClause.role = { [Op.ne]: 'admin' };
+    }
     if (status) whereClause.status = status;
     if (company_id) whereClause.company_id = company_id;
     if (office_id) whereClause.office_id = office_id;

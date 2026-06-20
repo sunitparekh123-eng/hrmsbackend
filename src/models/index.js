@@ -16,11 +16,18 @@ const PerformanceObjective = require('./performance_objective.model');
 const PerformanceReview = require('./performance_review.model');
 const Document = require('./document.model');
 const Letter = require('./letter.model');
+const LetterTemplate = require('./letter_template.model');
 const Notification = require('./notification.model');
 const PayrollCycle = require('./payroll_cycle.model');
 const PayrollEntry = require('./payroll_entry.model');
 const SalaryStructure = require('./salary_structure.model');
 const SalaryRevision = require('./salary_revision.model');
+const TourExpense = require('./tour_expense.model');
+const TourExpensePolicy = require('./tour_expense_policy.model');
+const Holiday = require('./holiday.model');
+const SystemSetting = require('./system_setting.model');
+const AuthorisedSignatory = require('./authorised_signatory.model');
+
 
 // ── Define Associations ──
 
@@ -118,6 +125,13 @@ SalaryRevision.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' }
 SalaryRevision.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
 Employee.hasMany(SalaryRevision, { foreignKey: 'approved_by', as: 'approvedRevisions' });
 
+// Employee → TourExpense
+Employee.hasMany(TourExpense, { foreignKey: 'employee_id', as: 'tourExpenses' });
+TourExpense.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+// TourExpense → Employee (approver)
+TourExpense.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
+Employee.hasMany(TourExpense, { foreignKey: 'approved_by', as: 'approvedTourExpenses' });
+
 module.exports = {
   sequelize,
   Employee,
@@ -137,7 +151,13 @@ module.exports = {
   PerformanceReview,
   Document,
   Letter,
+  LetterTemplate,
   Notification,
   SalaryStructure,
   SalaryRevision,
+  TourExpense,
+  TourExpensePolicy,
+  Holiday,
+  SystemSetting,
+  AuthorisedSignatory,
 };

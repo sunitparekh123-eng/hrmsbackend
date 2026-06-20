@@ -3,6 +3,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { LEAVE_TYPES, LEAVE_ACCRUAL, PAGINATION } = require('../utils/constants');
+const notificationService = require('./notification.service');
 
 class LeaveService {
   /**
@@ -259,6 +260,28 @@ class LeaveService {
           consecutive_no_usage_months: 0, // usage resets the streak
         });
       }
+    }
+
+    // Trigger Notification
+    try {
+      const fromFormatted = new Date(request.from_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const toFormatted = new Date(request.to_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const dateString = request.from_date === request.to_date ? fromFormatted : `${fromFormatted} to ${toFormatted}`;
+      
+      const title = action === 'approved' ? 'Leave Approved' : 'Leave Rejected';
+      const msg = `Your leave request for ${dateString} has been ${action}. ${remarks ? `Remarks: ${remarks}` : ''}`;
+      const type = action === 'approved' ? 'success' : 'error';
+
+      await notificationService.createNotification(
+        request.employee_id,
+        title,
+        msg,
+        type,
+        'leave',
+        '/leave'
+      );
+    } catch (notifErr) {
+      logger.error(`Failed to send leave notification: ${notifErr.message}`);
     }
 
     logger.info(`Leave request ${requestId} ${action} by ${approvedBy}`);

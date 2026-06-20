@@ -3,6 +3,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PAGINATION, PT_SLABS, PAYSLIP_STATUS } = require('../utils/constants');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
 
 // ── Salary calculation helpers (40 % formula, mirroring payroll_ledger & offer_letter) ──
 
@@ -98,45 +99,7 @@ function calcPT(proratedGross) {
   return 0;
 }
 
-/**
- * Calculate effective elapsed days for a given employee for payroll generation.
- * Respects the employee's date_of_joining so mid-month joiners are prorated correctly.
- *
- * - Joining in a past month  → today.getDate()  (full elapsed days of current month)
- * - Joining this month       → today.getDate() - doj.getDate() + 1
- * - Joining in the future    → 0 (not started yet)
- * - For closed/past months   → null (use full workingDays denominator)
- */
-function calcElapsedDaysForEmployee(now, isCurrentMonth, emp) {
-  if (!isCurrentMonth) return null; // past month — use full period
-
-  // Compare date-parts only (YYYY-MM-DD) to avoid UTC/IST timezone issues
-  const dojRaw = emp.date_of_joining;
-  if (!dojRaw) return now.getDate(); // no joining date — use full elapsed
-
-  const dojStr = typeof dojRaw === 'string'
-    ? dojRaw.slice(0, 10)
-    : dojRaw.toISOString().slice(0, 10);
-
-  const nowYear  = now.getFullYear();
-  const nowMonth = now.getMonth() + 1; // 1-indexed
-  const nowDay   = now.getDate();
-  const nowStr   = `${nowYear}-${String(nowMonth).padStart(2,'0')}-${String(nowDay).padStart(2,'0')}`;
-
-  // Future joining
-  if (dojStr > nowStr) return 0;
-
-  const [dojYear, dojMonth, dojDay] = dojStr.split('-').map(Number);
-
-  // Joined in a previous month
-  if (dojYear < nowYear || (dojYear === nowYear && dojMonth < nowMonth)) {
-    return nowDay;
-  }
-
-  // Joined this month — count from joining day to today (inclusive)
-  return nowDay - dojDay + 1;
-}
-
+// calcElapsedDaysForEmployee removed as countElapsedWorkingDays now handles Dates natively
 class PayrollService {
   // ── Read ──────────────────────────────────────────────────────────
 
@@ -232,11 +195,21 @@ class PayrollService {
     // Detect whether this is the current (ongoing) month
     const now = new Date();
     const isCurrentMonth = (now.getFullYear() === Number(year) && now.getMonth() === monthIndex);
-    // For current month, salary is earned only up to today's date
-    const elapsedDays = isCurrentMonth ? now.getDate() : null;
+
+    // ── Fetch dynamic weekend policy & holidays for this month ──
+    const weekendDays = await getWeekendDays();
+    const holidays = await getHolidaysInMonth(month, year);
+
+    // Total working days in the month (excluding weekends & holidays)
+    const dynamicWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
+
+    // For current month, salary is earned only up to today's working days
+    const elapsedWorkingDays = isCurrentMonth
+      ? countElapsedWorkingDays(year, month, now, null, weekendDays, holidays)
+      : null;
 
     // Fetch employees
-    const whereClause = { status: 'active' };
+    const whereClause = { status: 'active', role: { [Op.ne]: 'admin' } };
     if (employeeIds && employeeIds.length > 0) {
       whereClause.id = { [Op.in]: employeeIds };
     }
@@ -300,8 +273,8 @@ class PayrollService {
       const esicEmployeeRate = Number(str?.esic_employee_rate ?? 0.0075);
       const esicEmployerRate = Number(str?.esic_employer_rate ?? 0.0325);
 
-      // Working days — prefer structure config, default 26
-      const workingDays = str?.effective_work_days || 26;
+      // Working days — dynamically computed from weekend policy + holidays
+      const workingDays = dynamicWorkingDays;
 
       // Absent/LOP days from MonthlyAttendance (source of truth)
       const monthly = monthlyMap.get(emp.id);
@@ -310,16 +283,22 @@ class PayrollService {
         : 0;
 
       // Elapsed days — respect joining date for mid-month joiners
-      const empElapsedDays = calcElapsedDaysForEmployee(now, isCurrentMonth, emp);
-
-      // Employee hasn't joined yet this month — skip payslip generation
-      if (empElapsedDays === 0) {
-        logger.info(`Skipping payslip for employee ${emp.id} (${emp.name}) — joining date is in the future`);
-        continue;
+      let empElapsedWorkingDays = null;
+      if (isCurrentMonth) {
+        empElapsedWorkingDays = countElapsedWorkingDays(year, month, now, emp.date_of_joining, weekendDays, holidays);
+        if (empElapsedWorkingDays === 0) {
+          logger.info(`Skipping payslip for employee ${emp.id} (${emp.name}) — joining date is in the future or no elapsed days`);
+          continue;
+        }
+      } else {
+        const cycleEnd = new Date(year, month - 1, 25);
+        if (emp.date_of_joining && new Date(emp.date_of_joining) > cycleEnd) {
+          continue;
+        }
       }
 
       // ── 40% formula breakdown (with current-month pro-rating) ──
-      const breakdown = calcBreakdown(fixedGross, workingDays, absentDays, empElapsedDays);
+      const breakdown = calcBreakdown(fixedGross, workingDays, absentDays, empElapsedWorkingDays);
       const proratedGross = breakdown.basic + breakdown.hra + breakdown.other;
 
       // Conveyance & Medical — flat (from structure or defaults)

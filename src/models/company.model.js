@@ -12,6 +12,26 @@ const Company = sequelize.define('Company', {
     allowNull: false,
     unique: true,
   },
+  email: {
+    type: DataTypes.STRING(150),
+    allowNull: true,
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+  },
+  website: {
+    type: DataTypes.STRING(150),
+    allowNull: true,
+  },
+  city: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  state: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
   address: {
     type: DataTypes.TEXT,
     allowNull: true,

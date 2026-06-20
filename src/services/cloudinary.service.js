@@ -47,6 +47,9 @@ class CloudinaryService {
         allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
       };
 
+      if (options.transformation) uploadOptions.transformation = options.transformation;
+      if (options.background_removal) uploadOptions.background_removal = options.background_removal;
+
       const uploadStream = cloudinary.uploader.upload_stream(
         uploadOptions,
         (error, result) => {

@@ -8,6 +8,7 @@ const updateProfileSchema = Joi.object({
   address: Joi.string().optional(),
   gender: Joi.string().valid('male', 'female', 'other').optional(),
   date_of_birth: Joi.date().optional(),
+  profile_image: Joi.string().max(500).allow('', null).optional(),
 });
 
 // Admin update schema — includes salary config fields

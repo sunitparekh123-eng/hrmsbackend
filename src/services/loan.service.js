@@ -80,6 +80,10 @@ class LoanService {
   async applyLoan(employeeId, loanData, approvedBy = null) {
     const { type, principal_amount, interest_rate, tenure_months, reason } = loanData;
 
+    if (principal_amount > 50000) {
+      throw new AppError('Loan amount cannot exceed ₹50,000', 400);
+    }
+
     // Calculate EMI
     const emiAmount = this._calculateEMI(principal_amount, interest_rate, tenure_months);
 

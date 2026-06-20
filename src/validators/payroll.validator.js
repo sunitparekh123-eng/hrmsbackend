@@ -24,7 +24,7 @@ const updateEntryStatusSchema = Joi.object({
 });
 
 const disburseSchema = Joi.object({
-  mode: Joi.string().valid('Bank Transfer', 'Cash', 'Cheque', 'UPI', 'NEFT').required(),
+  mode: Joi.string().max(50).required(),
   reference: Joi.string().max(100).optional().allow(''),
   authorizedBy: Joi.string().max(100).required(),
   remarks: Joi.string().max(500).optional().allow(''),
