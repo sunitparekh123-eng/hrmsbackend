@@ -26,16 +26,20 @@ async function startServer() {
       
       const indexCounts = {};
       indexResults.forEach(r => {
-        indexCounts[r.table_name] = (indexCounts[r.table_name] || 0) + 1;
+        const tName = r.table_name || r.TABLE_NAME;
+        const iName = r.index_name || r.INDEX_NAME;
+        if (!tName || !iName) return;
+        indexCounts[tName] = (indexCounts[tName] || 0) + 1;
       });
       
       for (const [tableName, count] of Object.entries(indexCounts)) {
         if (count > 20) {
           logger.info(`🧹 Cleaning up ${count} duplicate indexes on table ${tableName}...`);
-          const tableIndexes = indexResults.filter(r => r.table_name === tableName);
+          const tableIndexes = indexResults.filter(r => (r.table_name || r.TABLE_NAME) === tableName);
           for (const row of tableIndexes) {
+            const idxName = row.index_name || row.INDEX_NAME;
             try {
-              await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${row.index_name}\``);
+              await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${idxName}\``);
             } catch (e) {
               // Ignore drop errors (e.g., if index is required by a foreign key)
             }
