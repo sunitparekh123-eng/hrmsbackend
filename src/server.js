@@ -16,6 +16,35 @@ async function startServer() {
     // Verify database connection
     await sequelize.authenticate();
     logger.info('✅ MySQL database connected successfully');
+    // Clean up duplicate indexes (MySQL max 64 keys error fix)
+    try {
+      const [indexResults] = await sequelize.query(`
+        SELECT table_name, index_name 
+        FROM information_schema.statistics 
+        WHERE table_schema = DATABASE() AND index_name != 'PRIMARY'
+      `);
+      
+      const indexCounts = {};
+      indexResults.forEach(r => {
+        indexCounts[r.table_name] = (indexCounts[r.table_name] || 0) + 1;
+      });
+      
+      for (const [tableName, count] of Object.entries(indexCounts)) {
+        if (count > 20) {
+          logger.info(`🧹 Cleaning up ${count} duplicate indexes on table ${tableName}...`);
+          const tableIndexes = indexResults.filter(r => r.table_name === tableName);
+          for (const row of tableIndexes) {
+            try {
+              await sequelize.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${row.index_name}\``);
+            } catch (e) {
+              // Ignore drop errors (e.g., if index is required by a foreign key)
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logger.warn('Failed to run index cleanup:', e.message);
+    }
 
     // Sync models (alter: true adds missing columns without data loss)
     const forceSync = process.env.DB_SYNC_FORCE === 'true';
