@@ -1,6 +1,6 @@
 const { AuthorisedSignatory } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
-const cloudinaryService = require('./cloudinary.service');
+const uploadService = require('./upload.service');
 
 class SignatoryService {
   async getAllSignatories() {
@@ -20,10 +20,9 @@ class SignatoryService {
     let signatureUrl = null;
 
     if (fileData) {
-      const uploadResult = await cloudinaryService.uploadFile(fileData.buffer, {
+      const uploadResult = await uploadService.uploadFile(fileData.buffer, {
         folder: 'hrms/signatures',
-        resource_type: 'image',
-        transformation: [{ effect: "make_transparent:10", color: "white" }],
+        format: 'png' // signatures are usually transparent PNGs
       });
       signatureUrl = uploadResult.secure_url;
     }
@@ -47,10 +46,9 @@ class SignatoryService {
     let signatureUrl = signatory.signature_url;
 
     if (fileData) {
-      const uploadResult = await cloudinaryService.uploadFile(fileData.buffer, {
+      const uploadResult = await uploadService.uploadFile(fileData.buffer, {
         folder: 'hrms/signatures',
-        resource_type: 'image',
-        transformation: [{ effect: "make_transparent:10", color: "white" }],
+        format: 'png'
       });
       signatureUrl = uploadResult.secure_url;
     }

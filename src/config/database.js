@@ -27,8 +27,8 @@ const sequelize = new Sequelize(env.DB_NAME, env.DB_USER, env.DB_PASSWORD, {
   },
   dialectOptions: {
     charset: 'utf8mb4',
-    // SSL required for Railway, PlanetScale, Aiven and most cloud MySQL providers
-    ...(isProduction && {
+    // SSL required for cloud MySQL providers. For Hostinger VPS local MySQL, set DB_SSL=false.
+    ...(env.DB_SSL && {
       ssl: {
         rejectUnauthorized: false,  // Required for self-signed certs on managed MySQL
       },

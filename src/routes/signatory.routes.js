@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth.middleware');
 const { authorize } = require('../middleware/role.middleware');
 const signatoryController = require('../controllers/signatory.controller');
 
-// Multer setup using memory storage for Cloudinary upload
+// Multer setup using memory storage for local upload
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {

@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth.middleware');
 const { authorize, selfOrAdmin } = require('../middleware/role.middleware');
 const documentController = require('../controllers/document.controller');
 
-// Multer setup — use memory storage so we can pipe the buffer to Cloudinary
+// Multer setup — use memory storage so we can write the buffer to local storage
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {

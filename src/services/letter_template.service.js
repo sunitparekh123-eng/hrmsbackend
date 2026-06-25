@@ -150,6 +150,15 @@ class LetterTemplateService {
         date_of_joining: candidateData.date_of_joining || new Date(),
         fixed_gross: candidateData.fixed_gross || 0,
         basic_salary: candidateData.basic_salary || 0,
+        pf_applicable: candidateData.pf_applicable ?? true,
+        pf_ceiling: candidateData.pf_ceiling ?? true,
+        pf_contribution_mode: candidateData.pf_contribution_mode || 'shared',
+        pf_employer_rate: Number(candidateData.pf_employer_rate ?? 0.12),
+        pf_employee_rate: Number(candidateData.pf_employee_rate ?? 0.12),
+        esic_applicable: candidateData.esic_applicable ?? true,
+        esic_contribution_mode: candidateData.esic_contribution_mode || 'shared',
+        esic_employer_rate: Number(candidateData.esic_employer_rate ?? 0.0325),
+        esic_employee_rate: Number(candidateData.esic_employee_rate ?? 0.0075),
         office: { name: candidateData.office || 'Head Office', address: '', city: '', state: '' },
         company: companyDetails
       };
@@ -163,15 +172,41 @@ class LetterTemplateService {
     const dateStr = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const fullDateStr = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    // Build substitution map
-    const basic = employee.basic_salary ? Number(employee.basic_salary) : 0;
-    const gross = employee.fixed_gross ? Number(employee.fixed_gross) : 0;
+    // Build substitution map using 40% strict rule
+    const gross = Number(employee.fixed_gross) || 0;
+    const basic = Math.round(gross * 0.40);
     const hra = Math.round(basic * 0.40);
     const special = gross - basic - hra;
 
-    const pfBase = basic > 15000 ? 15000 : basic;
-    const pfEmployer = Math.round(pfBase * 0.12);
-    const esiEmployer = gross <= 21000 ? Math.ceil(gross * 0.0325) : 0;
+    // Modes
+    const pf_applicable = employee.pf_applicable !== false;
+    const pf_ceiling = employee.pf_ceiling !== false;
+    const pf_mode = employee.pf_contribution_mode || 'shared';
+    const esic_applicable = employee.esic_applicable !== false;
+    const esic_mode = employee.esic_contribution_mode || 'shared';
+
+    // Calculations
+    const pfBase = (pf_ceiling && basic > 15000) ? 15000 : basic;
+    const pfEmpRate = employee.pf_employer_rate ?? 0.12;
+    const pfEpeRate = employee.pf_employee_rate ?? 0.12;
+    
+    let pfEmployer = 0, pfEmployee = 0;
+    if (pf_applicable) {
+      if (pf_mode === 'shared' || pf_mode === 'employer_only') pfEmployer = Math.round(pfBase * pfEmpRate);
+      if (pf_mode === 'shared' || pf_mode === 'employee_only') pfEmployee = Math.round(pfBase * pfEpeRate);
+    }
+
+    const esiEmpRate = employee.esic_employer_rate ?? 0.0325;
+    const esiEpeRate = employee.esic_employee_rate ?? 0.0075;
+
+    let esiEmployer = 0, esiEmployee = 0;
+    if (esic_applicable) {
+      if (esic_mode === 'shared' || esic_mode === 'employer_only') esiEmployer = Math.ceil(gross * esiEmpRate);
+      if (esic_mode === 'shared' || esic_mode === 'employee_only') esiEmployee = Math.ceil(gross * esiEpeRate);
+    }
+
+    const totalDeductions = pfEmployee + esiEmployee;
+    const netTakeHome = gross - totalDeductions;
     const ctc = gross + pfEmployer + esiEmployer;
 
     const basic_annual = basic * 12;
@@ -180,6 +215,10 @@ class LetterTemplateService {
     const gross_annual = gross * 12;
     const pf_annual = pfEmployer * 12;
     const esi_annual = esiEmployer * 12;
+    const pf_emp_annual = pfEmployee * 12;
+    const esi_emp_annual = esiEmployee * 12;
+    const deductions_annual = totalDeductions * 12;
+    const net_annual = netTakeHome * 12;
     const ctc_annual = ctc * 12;
 
     const placeholders = {
@@ -225,6 +264,14 @@ class LetterTemplateService {
       '[PF_Employer_Annual]': pf_annual ? `₹ ${pf_annual.toLocaleString('en-IN')}` : '—',
       '[ESI_Employer]': esiEmployer ? `₹ ${esiEmployer.toLocaleString('en-IN')}` : '—',
       '[ESI_Employer_Annual]': esi_annual ? `₹ ${esi_annual.toLocaleString('en-IN')}` : '—',
+      '[PF_Employee]': pfEmployee ? `₹ ${pfEmployee.toLocaleString('en-IN')}` : '—',
+      '[PF_Employee_Annual]': pf_emp_annual ? `₹ ${pf_emp_annual.toLocaleString('en-IN')}` : '—',
+      '[ESI_Employee]': esiEmployee ? `₹ ${esiEmployee.toLocaleString('en-IN')}` : '—',
+      '[ESI_Employee_Annual]': esi_emp_annual ? `₹ ${esi_emp_annual.toLocaleString('en-IN')}` : '—',
+      '[Total_Deductions]': totalDeductions ? `₹ ${totalDeductions.toLocaleString('en-IN')}` : '—',
+      '[Total_Deductions_Annual]': deductions_annual ? `₹ ${deductions_annual.toLocaleString('en-IN')}` : '—',
+      '[Net_Take_Home]': netTakeHome ? `₹ ${netTakeHome.toLocaleString('en-IN')}` : '—',
+      '[Net_Take_Home_Annual]': net_annual ? `₹ ${net_annual.toLocaleString('en-IN')}` : '—',
       '[CTC]': ctc ? `₹ ${ctc.toLocaleString('en-IN')}` : '_______________',
       '[CTC_Annual]': ctc_annual ? `₹ ${ctc_annual.toLocaleString('en-IN')}` : '_______________',
       '[Bank_Name]': employee.bank_name || '_______________',
@@ -317,9 +364,12 @@ Your Total Target Remuneration will be as detailed below. This includes your fix
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">House Rent Allowance (HRA)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[HRA]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[HRA_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Special Allowance</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Special_Allowance]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Special_Allowance_Annual]</td></tr>
     <tr style="font-weight: 700; background: rgba(0,0,0,0.02);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Gross Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary_Annual]</td></tr>
-    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Employer PF Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer_Annual]</td></tr>
-    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Employer ESI Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer_Annual]</td></tr>
-    <tr style="font-weight: 900; background: rgba(0,0,0,0.05);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Cost to Company (CTC)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: PF Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: ESI Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee_Annual]</td></tr>
+    <tr style="font-weight: 800; background: rgba(22,163,74,0.05);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">Net Take Home Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer PF Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer ESI Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer_Annual]</td></tr>
+    <tr style="font-weight: 900; background: rgba(0,0,0,0.08);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Cost to Company (CTC)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC_Annual]</td></tr>
   </tbody>
 </table>
 

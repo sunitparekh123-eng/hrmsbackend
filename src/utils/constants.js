@@ -142,6 +142,8 @@ const PF_CONTRIBUTION_MODES = {
 
 const ESIC_CONTRIBUTION_MODES = {
   NONE: 'none',
+  EMPLOYEE_ONLY: 'employee_only',
+  EMPLOYER_ONLY: 'employer_only',
   SHARED: 'shared',
 };
 

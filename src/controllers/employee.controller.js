@@ -131,8 +131,9 @@ class EmployeeController {
   async adminResetPassword(req, res, next) {
     try {
       const { id } = req.params;
+      const { customPassword } = req.body;
       const adminId = req.employee.id;
-      const result = await employeeService.adminResetPassword(id, adminId);
+      const result = await employeeService.adminResetPassword(id, adminId, customPassword);
       return success(res, 'Password reset successfully', result, 200);
     } catch (err) {
       logger.error(`Admin reset password error: ${err.message}`);

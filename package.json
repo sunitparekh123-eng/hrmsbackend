@@ -14,7 +14,10 @@
         "migrate:undo": "npx sequelize-cli db:migrate:undo",
         "seed:cli": "npx sequelize-cli db:seed:all",
         "test": "jest --coverage",
-        "lint": "eslint src/"
+        "lint": "eslint src/",
+        "pm2:start": "pm2 start ecosystem.config.js --env production",
+        "pm2:stop": "pm2 stop hrms-backend",
+        "pm2:restart": "pm2 restart hrms-backend"
     },
     "keywords": [
         "hrms",
@@ -27,7 +30,6 @@
     "license": "ISC",
     "dependencies": {
         "bcryptjs": "^2.4.3",
-        "cloudinary": "^2.10.0",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
         "express": "^4.21.0",

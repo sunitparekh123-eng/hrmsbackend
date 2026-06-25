@@ -128,9 +128,9 @@ const Employee = sequelize.define('Employee', {
     comment: 'Whether ESIC is applicable for this employee',
   },
   esic_contribution_mode: {
-    type: DataTypes.ENUM('none', 'shared'),
+    type: DataTypes.ENUM('none', 'employee_only', 'employer_only', 'shared'),
     defaultValue: 'shared',
-    comment: 'Who pays ESIC — shared (legally mandated) or none',
+    comment: 'Who pays ESIC — none, employee_only, employer_only, or shared',
   },
   // Bank details
   bank_name: {

@@ -71,9 +71,9 @@ const SalaryStructure = sequelize.define('SalaryStructure', {
     comment: 'Employer PF contribution rate (e.g., 0.12 = 12%)',
   },
   esic_contribution_mode: {
-    type: DataTypes.ENUM('none', 'shared'),
+    type: DataTypes.ENUM('none', 'employee_only', 'employer_only', 'shared'),
     defaultValue: 'shared',
-    comment: 'Who pays ESIC — shared (legally mandated) or none',
+    comment: 'Who pays ESIC — none, employee_only, employer_only, or shared',
   },
   esic_employee_rate: {
     type: DataTypes.DECIMAL(5, 4),

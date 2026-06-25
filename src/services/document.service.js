@@ -3,7 +3,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PAGINATION } = require('../utils/constants');
-const cloudinaryService = require('./cloudinary.service');
+const uploadService = require('./upload.service');
 
 class DocumentService {
   /**
@@ -66,8 +66,8 @@ class DocumentService {
     const resourceType = isImage ? 'image' : 'raw';
     const folder = `hrms/documents/employee_${employeeId}`;
 
-    // Upload file buffer to Cloudinary
-    const uploadResult = await cloudinaryService.uploadFile(buffer, {
+    // Upload file buffer to Local Storage
+    const uploadResult = await uploadService.uploadFile(buffer, {
       folder,
       filename: originalname.replace(/\.[^.]+$/, ''), // strip extension
       resourceType,
@@ -119,12 +119,15 @@ class DocumentService {
     const document = await Document.findByPk(documentId);
     if (!document) throw new AppError('Document not found', 404);
 
-    // Delete from Cloudinary first
-    const filePath = document.file_path;
-    if (filePath) {
-      const extracted = cloudinaryService.extractPublicIdFromUrl(filePath);
-      if (extracted) {
-        await cloudinaryService.deleteFile(extracted.publicId, extracted.resourceType);
+    // Delete from Local Storage first
+    if (document.file_path) {
+      try {
+        const extracted = uploadService.extractPublicIdFromUrl(document.file_path);
+        if (extracted && extracted.publicId) {
+          await uploadService.deleteFile(extracted.publicId, extracted.resourceType);
+        }
+      } catch (err) {
+        logger.error(`Failed to delete file from storage: ${err.message}`);
       }
     }
 

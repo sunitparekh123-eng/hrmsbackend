@@ -18,6 +18,7 @@ const env = {
   DB_DIALECT: process.env.DB_DIALECT || 'mysql',
   DB_LOGGING: process.env.DB_LOGGING === 'true',
   DB_SYNC_FORCE: process.env.DB_SYNC_FORCE === 'true',
+  DB_SSL: process.env.DB_SSL === 'true',
 
   // JWT
   JWT_SECRET: process.env.JWT_SECRET || 'change_this_in_production',
@@ -37,11 +38,7 @@ const env = {
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
 
-  // Cloudinary
-  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
-  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
-  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
-
+  // Cloudinary has been removed in favor of local storage
   // SMTP (Brevo / Sendinblue)
   SMTP_HOST: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   SMTP_PORT: parseInt(process.env.SMTP_PORT) || 587,

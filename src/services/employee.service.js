@@ -290,17 +290,22 @@ class EmployeeService {
    * @param {number} adminId - The admin performing the reset (for audit log)
    * @returns {{ employee_id, emp_code, name, new_password }}
    */
-  async adminResetPassword(employeeId, adminId) {
+  async adminResetPassword(employeeId, adminId, customPassword) {
     const employee = await Employee.findByPk(employeeId);
     if (!employee) throw new AppError('Employee not found', 404);
 
-    // Generate a readable random password: 2 words + 3 digits (e.g. "blueTiger482")
-    const adjectives = ['blue', 'red', 'dark', 'gold', 'fast', 'cool', 'wise', 'bold', 'keen', 'calm'];
-    const nouns = ['Tiger', 'Eagle', 'Hawk', 'Wolf', 'Bear', 'Lion', 'Owl', 'Fox', 'Deer', 'Elk'];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    const digits = String(Math.floor(Math.random() * 900) + 100);
-    const newPassword = `${adj}${noun}${digits}`;
+    let newPassword;
+    if (customPassword) {
+      newPassword = customPassword;
+    } else {
+      // Generate a readable random password: 2 words + 3 digits (e.g. "blueTiger482")
+      const adjectives = ['blue', 'red', 'dark', 'gold', 'fast', 'cool', 'wise', 'bold', 'keen', 'calm'];
+      const nouns = ['Tiger', 'Eagle', 'Hawk', 'Wolf', 'Bear', 'Lion', 'Owl', 'Fox', 'Deer', 'Elk'];
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      const digits = String(Math.floor(Math.random() * 900) + 100);
+      newPassword = `${adj}${noun}${digits}`;
+    }
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
