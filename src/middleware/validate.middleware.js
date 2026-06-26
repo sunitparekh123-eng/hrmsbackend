@@ -19,6 +19,7 @@ const validate = (schema, source = 'body') => {
         field: d.path.join('.'),
         message: d.message,
       }));
+      require('../utils/logger').warn(`[400] Validation error - Details: ${JSON.stringify(errors)}`);
       return error(res, 'Validation error', 400, errors);
     }
 
