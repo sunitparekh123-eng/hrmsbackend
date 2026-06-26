@@ -116,7 +116,11 @@ const errorHandler = (err, req, res, next) => {
   if (statusCode >= 500) {
     logger.error(`[${statusCode}] ${message}:`, err.stack || err);
   } else {
-    logger.warn(`[${statusCode}] ${message}`);
+    if (errors) {
+      logger.warn(`[${statusCode}] ${message} - Details: ${JSON.stringify(errors)}`);
+    } else {
+      logger.warn(`[${statusCode}] ${message}`);
+    }
   }
 
   // Send response
