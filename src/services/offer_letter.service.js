@@ -4,6 +4,10 @@ const { Letter } = require('../models');
 const emailService = require('./email.service');
 const logger = require('../utils/logger');
 
+// Company logo embedded as base64 buffer — deploys with source code,
+// no file-system dependency required on the production server.
+const COMPANY_LOGO_BUFFER = require('../config/company_logo');
+
 /**
  * Offer letter PDF generation & delivery service.
  *
@@ -129,9 +133,19 @@ class OfferLetterService {
       
       // ── Header row ──
       const headerY = doc.y;
-      // Left side
-      doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text(employee.company?.name || this.COMPANY_SHORT, 60, headerY, { continued: false });
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('HUMAN RESOURCES DEPARTMENT', 60, doc.y + 4);
+      // Left side – company logo + name
+      const logoSize = 42;
+      let textLeftX = 60;
+      if (COMPANY_LOGO_BUFFER) {
+        try {
+          doc.image(COMPANY_LOGO_BUFFER, 60, headerY - 6, { fit: [logoSize, logoSize] });
+          textLeftX = 60 + logoSize + 12;
+        } catch (e) {
+          // ignore image errors, fall back to text-only header
+        }
+      }
+      doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text(employee.company?.name || this.COMPANY_SHORT, textLeftX, headerY, { continued: false });
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('HUMAN RESOURCES DEPARTMENT', textLeftX, doc.y + 4);
       
       // Right side
       const rightX = doc.page.width - 60 - 150;

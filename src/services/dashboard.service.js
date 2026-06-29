@@ -71,7 +71,7 @@ async function computeLivePayslip(employeeId, currentMonth, currentYear, monthly
 
   // ── Dynamic working days from weekend policy + holidays ──
   const weekendDays = await getWeekendDays();
-  const holidays = await getHolidaysInMonth(currentMonth, currentYear);
+  const holidays = await getHolidaysInMonth(currentYear, currentMonth);
   const workingDays = countWorkingDaysInMonth(currentYear, currentMonth, weekendDays, holidays);
 
   const conveyance = Number(str?.conveyance) || 0;

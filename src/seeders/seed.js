@@ -215,7 +215,7 @@ const seed = async () => {
 
     // Fetch dynamic weekend policy & holidays for attendance seeding
     const weekendDays = await getWeekendDays();
-    const seededHolidays = await getHolidaysInMonth(currentMonth + 1, currentYear);
+    const seededHolidays = await getHolidaysInMonth(currentYear, currentMonth + 1);
 
     for (const emp of activeEmployees) {
       for (let day = 1; day <= today; day++) {

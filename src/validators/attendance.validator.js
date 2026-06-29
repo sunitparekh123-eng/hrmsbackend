@@ -24,7 +24,9 @@ const adminLiveQuerySchema = Joi.object({
   search: Joi.string().allow('', null).optional(),
   status: Joi.string().valid('Present', 'Absent', 'Late', 'Half Day', 'On Leave', 'Weekend').optional(),
   page: Joi.number().integer().min(1).optional(),
-  limit: Joi.number().integer().min(1).max(100).optional(),
+  // Allow a high limit so the frontend can export ALL matching employees
+  // in a single request (not just the current page of 8).
+  limit: Joi.number().integer().min(1).max(100000).optional(),
 });
 
 const adminHistoryQuerySchema = Joi.object({

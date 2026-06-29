@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 const PDFDocument = require('pdfkit');
 const { salaryToWords } = require('../utils/amount-to-words');
 
+// Company logo embedded as base64 buffer — deploys with source code,
+// no file-system dependency required on the production server.
+const COMPANY_LOGO_BUFFER = require('../config/company_logo');
+
 class PayrollController {
   async getMyPayslips(req, res, next) {
     try {
@@ -105,8 +109,18 @@ class PayrollController {
       doc.rect(0, 0, doc.page.width, 4).fill(accentColor);
 
       // ── Header ──
-      doc.font('Helvetica-Bold').fontSize(20).fillColor(primaryColor);
-      doc.text("NODE HRMS", 15, 18);
+      // Company logo (left) with fallback to text
+      if (COMPANY_LOGO_BUFFER) {
+        try {
+          doc.image(COMPANY_LOGO_BUFFER, 15, 12, { fit: [34, 34] });
+        } catch (e) {
+          doc.font('Helvetica-Bold').fontSize(20).fillColor(primaryColor);
+          doc.text(emp.company?.name || 'Apaar Logistics Pvt Ltd', 15, 18);
+        }
+      } else {
+        doc.font('Helvetica-Bold').fontSize(20).fillColor(primaryColor);
+        doc.text(emp.company?.name || 'Apaar Logistics Pvt Ltd', 15, 18);
+      }
 
       doc.font('Helvetica-Bold').fontSize(10).fillColor(textColor);
       doc.text(emp.company?.name || 'Apaar Logistics Pvt Ltd', 0, 15, { align: 'right', width: doc.page.width - 15 });

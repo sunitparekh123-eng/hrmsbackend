@@ -198,7 +198,7 @@ class PayrollService {
 
     // ── Fetch dynamic weekend policy & holidays for this month ──
     const weekendDays = await getWeekendDays();
-    const holidays = await getHolidaysInMonth(month, year);
+    const holidays = await getHolidaysInMonth(year, month);
 
     // Total working days in the month (excluding weekends & holidays)
     const dynamicWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);

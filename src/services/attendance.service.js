@@ -878,12 +878,16 @@ class AttendanceService {
         }
       }
 
-      // Use monthly data if available for counts
-      const p = monthly ? monthly.present_days : presentCount;
-      const a = monthly ? monthly.absent_days : absentCount;
-      const w = monthly ? (monthly.weekend_days || 0) : woffCount;
-      const l = monthly ? monthly.half_days : 0;
-      const h = monthly ? (monthly.holiday_days || 0) : holidayCount;
+      // Always use grid-computed counts — they match exactly what is displayed
+      // in the grid for the selected calendar month. The stored monthly record
+      // uses a payroll cycle (26th–25th) and only counts explicit status='absent'
+      // records, which causes a mismatch with the grid (days with no record are
+      // shown as 'A' in the grid but not counted in monthly.absent_days).
+      const p = presentCount;
+      const a = absentCount;
+      const w = woffCount;
+      const l = 0; // half-days are already included in presentCount (shown as 'P')
+      const h = holidayCount;
 
       return {
         id: emp.emp_code,
@@ -1097,7 +1101,7 @@ class AttendanceService {
    */
   async _getWorkingDaysInMonth(year, month, weekendDays, holidays) {
     const wDays = weekendDays || await _getWeekendDays();
-    const hols = holidays || await getHolidaysInMonth(month, year);
+    const hols = holidays || await getHolidaysInMonth(year, month);
     let count = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
     for (let day = 1; day <= daysInMonth; day++) {
