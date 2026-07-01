@@ -482,9 +482,15 @@ class ReportService {
     const { Op } = require('sequelize');
     const { TourExpense, Employee, Office } = require('../models');
 
-    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    let prevMonthYear = year;
+    let prevMonth = month - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevMonthYear = year - 1;
+    }
+
+    const monthStart = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}-26`;
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-25`;
 
     const empWhere = {};
     if (office_id) empWhere.office_id = office_id;

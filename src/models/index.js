@@ -45,6 +45,10 @@ Employee.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 // Employee → AttendanceRecord
 Employee.hasMany(AttendanceRecord, { foreignKey: 'employee_id', as: 'attendanceRecords' });
 AttendanceRecord.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+AttendanceRecord.belongsTo(Office, { foreignKey: 'punch_in_office_id', as: 'punchInOffice' });
+AttendanceRecord.belongsTo(Office, { foreignKey: 'punch_out_office_id', as: 'punchOutOffice' });
+Office.hasMany(AttendanceRecord, { foreignKey: 'punch_in_office_id', as: 'punchInRecords' });
+Office.hasMany(AttendanceRecord, { foreignKey: 'punch_out_office_id', as: 'punchOutRecords' });
 
 // Employee → MonthlyAttendance
 Employee.hasMany(MonthlyAttendance, { foreignKey: 'employee_id', as: 'monthlyAttendances' });

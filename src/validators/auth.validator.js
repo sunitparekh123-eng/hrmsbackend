@@ -82,7 +82,7 @@ const registerSchema = Joi.object({
   medical_allowance: Joi.number().min(0).optional().allow(null, ''),
 
   // ── Offer letter toggle ──
-  send_offer_letter: Joi.boolean().default(true),
+  send_offer_letter: Joi.boolean().default(false),
 });
 
 const salaryStructureSchema = Joi.object({

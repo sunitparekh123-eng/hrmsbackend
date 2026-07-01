@@ -96,6 +96,16 @@ const AttendanceRecord = sequelize.define('AttendanceRecord', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  punch_in_office_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'offices', key: 'id' },
+  },
+  punch_out_office_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'offices', key: 'id' },
+  },
 }, {
   tableName: 'attendance_records',
   indexes: [

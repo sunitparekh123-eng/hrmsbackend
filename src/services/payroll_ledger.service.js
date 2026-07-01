@@ -260,6 +260,12 @@ class PayrollLedgerService {
         payableDays,
         dailyCost,
         projectedMonthly,
+        uan: emp.uan || '--',
+        department: emp.department || '--',
+        pfNumber: emp.pf_number || '--',
+        bankName: emp.bank_name || '--',
+        bankAccountNumber: emp.bank_account_number || '--',
+        workingDays: Math.max(0, dynamicDays - absentDays),
         ...calculation,
       };
     });
@@ -327,6 +333,12 @@ class PayrollLedgerService {
         loanDeduction: Number(entry.loan_deduction) || 0,
         otherDeduction: Number(entry.other_deduction) || 0,
         status: entry.status || cycle.status || 'Draft',
+        uan: emp.uan || '--',
+        department: emp.department || '--',
+        pfNumber: emp.pf_number || '--',
+        bankName: emp.bank_name || '--',
+        bankAccountNumber: emp.bank_account_number || '--',
+        workingDays: Math.max(0, dynamicDays - (entry.absent_days || 0)),
         ...calculation,
       };
     });

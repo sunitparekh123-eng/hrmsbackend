@@ -107,7 +107,7 @@ class AuthService {
 
     const plainPassword = employeeData.password || 'Welcome@123';
     const hashedPassword = await bcrypt.hash(plainPassword, 12);
-    const sendOfferLetter = employeeData.send_offer_letter !== false; // default true
+    const sendOfferLetter = employeeData.send_offer_letter === true; // default false
 
     // Calculate salary breakup using 40% basic formula matching payroll_ledger
     const gross = Number(employeeData.fixed_gross) || 0;

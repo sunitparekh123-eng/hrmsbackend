@@ -199,16 +199,22 @@ class DashboardService {
       attributes: ['month', 'year', 'present_days', 'absent_days', 'late_days', 'half_days', 'attendance_percentage'],
     });
 
-    // Daily attendance records for current month (for calendar + log)
-    const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+    // Daily attendance records for current cycle (for calendar + log, 26th of previous month to 25th of current month)
+    let prevMonthYear = currentYear;
+    let prevMonth = currentMonth - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevMonthYear = currentYear - 1;
+    }
+
+    const startDateStr = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}-26`;
+    const endDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-25`;
+
     const dailyAttendance = await AttendanceRecord.findAll({
       where: {
         employee_id: employeeId,
         date: {
-          [Op.between]: [
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
-          ],
+          [Op.between]: [startDateStr, endDateStr],
         },
       },
       order: [['date', 'ASC']],

@@ -32,6 +32,9 @@ class EmailService {
       pool: true,
       maxConnections: 5,
       maxMessages: 100,
+      connectionTimeout: 5000, // 5 seconds connection timeout
+      greetingTimeout: 5000,   // 5 seconds greeting timeout
+      socketTimeout: 10000,    // 10 seconds socket timeout
     });
 
     // Verify connection on startup (non-blocking)

@@ -175,21 +175,47 @@ class AttendanceService {
       throw new AppError('Already punched in today', 400);
     }
 
-    // Get employee's office for geo-fencing
+    // Get employee profile with their company association
     const employee = await Employee.findByPk(employeeId, { include: ['office'] });
-    if (!employee || !employee.office) {
-      throw new AppError('Office location not configured for your account', 400);
+    if (!employee) {
+      throw new AppError('Employee profile not found', 400);
     }
 
-    // Geo-fence check
-    const distance = this._calculateDistance(
-      latitude, longitude,
-      employee.office.latitude, employee.office.longitude
-    );
+    // Get all active offices for this company
+    const offices = await Office.findAll({
+      where: { company_id: employee.company_id, is_active: true }
+    });
 
-    if (distance > employee.office.radius_meters) {
-      throw new AppError(`You are outside the office perimeter (${Math.round(distance)}m away). Office radius: ${employee.office.radius_meters}m`, 403);
+    let matchingOffice = null;
+    let minDistance = null;
+    let primaryDistance = null;
+
+    for (const office of offices) {
+      const dist = this._calculateDistance(
+        latitude, longitude,
+        office.latitude, office.longitude
+      );
+
+      if (employee.office_id === office.id) {
+        primaryDistance = dist;
+      }
+
+      if (dist <= office.radius_meters) {
+        matchingOffice = office;
+        minDistance = dist;
+        break; // Match found!
+      }
     }
+
+    if (!matchingOffice) {
+      const primaryLocName = employee.office?.name || 'Primary Office';
+      const detailMsg = primaryDistance !== null 
+        ? `outside ${primaryLocName} by ${Math.round(primaryDistance - (employee.office?.radius_meters || 200))}m`
+        : 'outside any company office geofence';
+      throw new AppError(`You are outside all registered office perimeters (${detailMsg}).`, 403);
+    }
+
+    const distance = minDistance;
 
     // Determine status and late arrival using shift_start_time (default 10:00 AM = 600 mins)
     const localCheckInMins = getLocalMinutesFromMidnight(today);
@@ -229,9 +255,10 @@ class AttendanceService {
       check_in_latitude: latitude,
       check_in_longitude: longitude,
       check_in_method: 'web',
+      punch_in_office_id: matchingOffice.id,
     });
 
-    logger.info(`Employee ${employee.emp_code} punched in at ${today.toISOString()}`);
+    logger.info(`Employee ${employee.emp_code} punched in at ${today.toISOString()} at branch ${matchingOffice.name}`);
 
     return {
       id: record.id,
@@ -261,13 +288,44 @@ class AttendanceService {
 
     // Geo-fence check for punch out
     const employee = await Employee.findByPk(employeeId, { include: ['office'] });
-    let distance = null;
-    if (employee && employee.office) {
-      distance = this._calculateDistance(
-        latitude, longitude,
-        employee.office.latitude, employee.office.longitude
-      );
+    if (!employee) {
+      throw new AppError('Employee profile not found', 400);
     }
+
+    const offices = await Office.findAll({
+      where: { company_id: employee.company_id, is_active: true }
+    });
+
+    let matchingOffice = null;
+    let minDistance = null;
+    let primaryDistance = null;
+
+    for (const office of offices) {
+      const dist = this._calculateDistance(
+        latitude, longitude,
+        office.latitude, office.longitude
+      );
+
+      if (employee.office_id === office.id) {
+        primaryDistance = dist;
+      }
+
+      if (dist <= office.radius_meters) {
+        matchingOffice = office;
+        minDistance = dist;
+        break; // Match found!
+      }
+    }
+
+    if (!matchingOffice) {
+      const primaryLocName = employee.office?.name || 'Primary Office';
+      const detailMsg = primaryDistance !== null 
+        ? `outside ${primaryLocName} by ${Math.round(primaryDistance - (employee.office?.radius_meters || 200))}m`
+        : 'outside any company office geofence';
+      throw new AppError(`You are outside all registered office perimeters (${detailMsg}).`, 403);
+    }
+
+    const distance = minDistance;
 
     let checkInTime = null;
     if (typeof record.check_in_time === 'string') {
@@ -313,6 +371,7 @@ class AttendanceService {
       check_out_latitude: latitude,
       check_out_longitude: longitude,
       overtime_minutes: overtimeMinutes,
+      punch_out_office_id: matchingOffice.id,
     });
 
     // Update monthly attendance
@@ -404,16 +463,21 @@ class AttendanceService {
       },
     });
 
-    const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+    let prevMonthYear = currentYear;
+    let prevMonth = currentMonth - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevMonthYear = currentYear - 1;
+    }
+
+    const startDateStr = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}-26`;
+    const endDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-25`;
 
     const dailyRecords = await AttendanceRecord.findAll({
       where: {
         employee_id: employeeId,
         date: {
-          [Op.between]: [
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
-          ],
+          [Op.between]: [startDateStr, endDateStr],
         },
       },
       order: [['date', 'ASC']],
@@ -532,6 +596,9 @@ class AttendanceService {
     const empIds = employees.map(e => e.id);
     const todayRecords = await AttendanceRecord.findAll({
       where: { employee_id: { [Op.in]: empIds }, date: today },
+      include: [
+        { model: Office, as: 'punchInOffice', attributes: ['id', 'name'] }
+      ]
     });
 
     // Device name mapping for frontend display
@@ -581,6 +648,11 @@ class AttendanceService {
         }
       }
 
+      let locationName = emp.office?.name || '---';
+      if (record && record.punchInOffice && record.punchInOffice.id !== emp.office_id) {
+        locationName = `${emp.office?.name || '---'} (Work from ${record.punchInOffice.name})`;
+      }
+
       return {
         id: emp.emp_code,
         name: emp.name,
@@ -588,7 +660,7 @@ class AttendanceService {
         status,
         punchIn: punchIn ? _formatTime(punchIn) : '---',
         punchOut: punchOut ? _formatTime(punchOut) : '---',
-        location: emp.office?.name || '---',
+        location: locationName,
         company: emp.company?.name || '---',
         distance,
         device,
@@ -676,6 +748,9 @@ class AttendanceService {
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const { rows, count } = await AttendanceRecord.findAndCountAll({
       where,
+      include: [
+        { model: Office, as: 'punchInOffice', attributes: ['id', 'name'] }
+      ],
       order: [['date', 'DESC'], ['check_in_time', 'DESC']],
       limit: parseInt(limit),
       offset,
@@ -697,11 +772,16 @@ class AttendanceService {
         overtimeStr = otH > 0 ? `${otH}h ${otM}m` : `${otM}m`;
       }
 
+      let hubName = office?.name || '---';
+      if (r.punchInOffice && r.punchInOffice.id !== office?.id) {
+        hubName = `${office?.name || '---'} (Work from ${r.punchInOffice.name})`;
+      }
+
       return {
         date: r.date,
         name: emp?.name || 'Unknown',
         id: emp?.emp_code || '-',
-        hub: office?.name || '---',
+        hub: hubName,
         company: emp?.company?.name || '---',
         shift: 'General',
         hours: r.total_hours ? `${Math.floor(r.total_hours)}h ${Math.round((r.total_hours % 1) * 60)}m` : '---',
@@ -770,17 +850,31 @@ class AttendanceService {
     });
 
     const empIds = employees.map(e => e.id);
-    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-    // Get all daily records for these employees in the month
+    // Calculate cycle start and end dates based on 26th to 25th cycle
+    let prevMonthYear = currentYear;
+    let prevMonth = currentMonth - 1;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevMonthYear = currentYear - 1;
+    }
+
+    const startDateStr = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}-26`;
+    const endDateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-25`;
+
+    const startDate = new Date(prevMonthYear, prevMonth - 1, 26);
+    const endDate = new Date(currentYear, currentMonth - 1, 25);
+    
+    // Calculate total days in this specific cycle
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const daysInMonth = Math.round((endDate - startDate) / oneDayMs) + 1;
+
+    // Get all daily records for these employees in the cycle
     const dailyRecords = await AttendanceRecord.findAll({
       where: {
         employee_id: { [Op.in]: empIds },
         date: {
-          [Op.between]: [
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
-            `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
-          ],
+          [Op.between]: [startDateStr, endDateStr],
         },
       },
       order: [['date', 'ASC']],
@@ -800,26 +894,18 @@ class AttendanceService {
       recordMap.get(r.employee_id).set(r.date, r);
     });
 
-    // Get active holidays that fall in this month
+    // Get active holidays that fall in this cycle
     const holidaysList = await Holiday.findAll({
       where: {
         is_active: true,
         [Op.or]: [
+          { start_date: { [Op.between]: [startDateStr, endDateStr] } },
+          { end_date: { [Op.between]: [startDateStr, endDateStr] } },
           {
-            start_date: {
-              [Op.between]: [
-                `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
-                `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
-              ]
-            }
-          },
-          {
-            end_date: {
-              [Op.between]: [
-                `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`,
-                `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
-              ]
-            }
+            [Op.and]: [
+              { start_date: { [Op.lte]: startDateStr } },
+              { end_date: { [Op.gte]: endDateStr } }
+            ]
           }
         ]
       }
@@ -839,10 +925,13 @@ class AttendanceService {
       let grid = '';
       let presentCount = 0, absentCount = 0, woffCount = 0, leaveCount = 0, holidayCount = 0;
 
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const dateObj = new Date(currentYear, currentMonth - 1, d);
-        const dayOfWeek = dateObj.getDay();
+      let dObj = new Date(startDate);
+      while (dObj <= endDate) {
+        const yyyy = dObj.getFullYear();
+        const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dObj.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        const dayOfWeek = dObj.getDay();
 
         // Check if date falls on a public holiday
         const isHoliday = holidaysList.some(h => dateStr >= h.start_date && dateStr <= h.end_date);
@@ -865,7 +954,7 @@ class AttendanceService {
           }
         } else {
           // No attendance record for this day
-          const isFutureDate = dateObj > localToday; // future dates haven't happened yet
+          const isFutureDate = dObj > localToday; // future dates haven't happened yet
           if (isFutureDate) {
             grid += '-'; // future — not yet recorded
           } else if (isHoliday) {
@@ -876,13 +965,11 @@ class AttendanceService {
             grid += 'A'; absentCount++;
           }
         }
+
+        // Advance to next day
+        dObj.setDate(dObj.getDate() + 1);
       }
 
-      // Always use grid-computed counts — they match exactly what is displayed
-      // in the grid for the selected calendar month. The stored monthly record
-      // uses a payroll cycle (26th–25th) and only counts explicit status='absent'
-      // records, which causes a mismatch with the grid (days with no record are
-      // shown as 'A' in the grid but not counted in monthly.absent_days).
       const p = presentCount;
       const a = absentCount;
       const w = woffCount;
