@@ -5,7 +5,9 @@ const { PAGINATION } = require('../utils/constants');
 
 class NotificationService {
   async getNotifications(employeeId, { page = 1, limit = PAGINATION.DEFAULT_LIMIT, type, category, isRead } = {}) {
-    const offset = (page - 1) * limit;
+    const parsedPage = parseInt(page, 10) || 1;
+    const parsedLimit = parseInt(limit, 10) || PAGINATION.DEFAULT_LIMIT;
+    const offset = (parsedPage - 1) * parsedLimit;
     const whereClause = { employee_id: employeeId };
     if (type) whereClause.type = type;
     if (category) whereClause.category = category;
@@ -14,17 +16,17 @@ class NotificationService {
     const { rows, count } = await Notification.findAndCountAll({
       where: whereClause,
       order: [['created_at', 'DESC']],
-      limit,
+      limit: parsedLimit,
       offset,
     });
 
     return {
       data: rows,
       pagination: {
-        page,
-        limit,
+        page: parsedPage,
+        limit: parsedLimit,
         total: count,
-        totalPages: Math.ceil(count / limit),
+        totalPages: Math.ceil(count / parsedLimit),
       },
     };
   }

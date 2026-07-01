@@ -25,8 +25,10 @@ const corsOptions = {
     const isRender = /^https:\/\/[a-zA-Z0-9-]+\.onrender\.com$/.test(origin);
     // Always allow any *.vercel.app subdomain (Vercel preview + production URLs)
     const isVercel = /^https:\/\/[a-zA-Z0-9-]+\.vercel\.app$/.test(origin);
+    // Always allow any *.github.io subdomain (GitHub Pages)
+    const isGithub = /^https:\/\/[a-zA-Z0-9-_]+\.github\.io$/.test(origin);
 
-    if (isLocalhost || isRender || isVercel || allowedOrigins.includes(origin)) {
+    if (isLocalhost || isRender || isVercel || isGithub || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS: origin '${origin}' not allowed`));
