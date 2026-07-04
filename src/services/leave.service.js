@@ -44,11 +44,13 @@ class LeaveService {
     }
 
     if (!isAdminOnBehalf) {
-      if (parseInt(duration) !== 1) {
-        throw new AppError('Employees can only apply for exactly 1 day of leave at a time.', 400);
+      if (parseInt(duration) < 1 || parseInt(duration) > 2) {
+        throw new AppError('Employees can only apply for 1 or 2 days of leave at a time.', 400);
       }
-      if (from_date !== to_date) {
-        throw new AppError('Start and end dates must be identical for a 1-day leave request.', 400);
+      const diffTime = Math.abs(new Date(to_date).getTime() - new Date(from_date).getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      if (diffDays !== parseInt(duration)) {
+        throw new AppError(`Selected dates do not match the requested duration of ${duration} day(s).`, 400);
       }
     }
 
@@ -66,7 +68,7 @@ class LeaveService {
       const lastDay = new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 0).getDate();
       const monthEnd = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-      const existingInMonth = await LeaveRequest.findOne({
+      const monthlyRequests = await LeaveRequest.findAll({
         where: {
           employee_id: employeeId,
           status: { [Op.in]: ['pending', 'approved'] },
@@ -75,8 +77,9 @@ class LeaveService {
         },
       });
 
-      if (existingInMonth) {
-        throw new AppError('You already have a leave request in this month. Maximum 1 leave per month.', 409);
+      const totalRequestedInMonth = monthlyRequests.reduce((sum, r) => sum + Number(r.duration), 0);
+      if (totalRequestedInMonth + Number(duration) > 2) {
+        throw new AppError(`You already have ${totalRequestedInMonth} day(s) of leave requested/approved in this month. Maximum 2 leaves per month.`, 409);
       }
     }
 
@@ -362,8 +365,8 @@ class LeaveService {
    * Runs month-by-month from last_accrual_month to current month.
    *
    * Rules:
-   * - +1 EL earned per month
-   * - If no leave used for 2 consecutive months → all accrued leaves lapse (available = admin_granted)
+   * - +2 EL earned per month
+   * - If no leave used for 3 consecutive months → all accrued leaves lapse (available = admin_granted)
    * - Admin-granted leaves never lapse
    */
   async _ensureAccrualUpToDate(employeeId) {

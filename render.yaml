@@ -2,35 +2,35 @@ services:
   - type: web
     name: hrms-backend
     runtime: node
-    region: singapore   # Closest to India
-    plan: free          # Change to 'starter' ($7/mo) for always-on (free sleeps after 15min)
+    region: singapore # Closest to India
+    plan: free # Change to 'starter' ($7/mo) for always-on (free sleeps after 15min)
     branch: main
-    rootDir: backend    # Subfolder in your repo (adjust if backend is repo root)
+    rootDir: backend # Subfolder in your repo (adjust if backend is repo root)
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
-    autoDeploy: true    # Auto re-deploy on every push to main branch
+    autoDeploy: true # Auto re-deploy on every push to main branch
 
     # Environment Variables — set these in Render Dashboard → Environment
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000   # Render assigns its own port but this is the fallback
+        value: 10000 # Render assigns its own port but this is the fallback
       - key: API_PREFIX
         value: /api/v1
       - key: DB_SYNC_ALTER
-        value: "true"   # Safely add missing columns on first deploy
+        value: "true" # Safely add missing columns on first deploy
       - key: DB_SYNC_FORCE
-        value: "false"  # NEVER set to true in production!
+        value: "false" # NEVER set to true in production!
       - key: DB_LOGGING
         value: "false"
       - key: DB_DIALECT
         value: mysql
       - key: JWT_EXPIRES_IN
-        value: 24h
+        value: 30d
       - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
+        value: 60d
       - key: RATE_LIMIT_MAX
         value: "500"
       - key: RATE_LIMIT_WINDOW_MS
@@ -48,7 +48,7 @@ services:
 
       # ── SECRETS (set manually in Render Dashboard — DO NOT put real values here) ──
       - key: DB_HOST
-        sync: false   # Marks as secret — you'll fill this in Render Dashboard
+        sync: false # Marks as secret — you'll fill this in Render Dashboard
       - key: DB_PORT
         sync: false
       - key: DB_NAME

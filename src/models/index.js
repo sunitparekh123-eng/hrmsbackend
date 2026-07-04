@@ -24,6 +24,7 @@ const SalaryStructure = require('./salary_structure.model');
 const SalaryRevision = require('./salary_revision.model');
 const TourExpense = require('./tour_expense.model');
 const TourExpensePolicy = require('./tour_expense_policy.model');
+const Tour = require('./tour.model');
 const Holiday = require('./holiday.model');
 const SystemSetting = require('./system_setting.model');
 const AuthorisedSignatory = require('./authorised_signatory.model');
@@ -136,6 +137,15 @@ TourExpense.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
 TourExpense.belongsTo(Employee, { foreignKey: 'approved_by', as: 'approver' });
 Employee.hasMany(TourExpense, { foreignKey: 'approved_by', as: 'approvedTourExpenses' });
 
+// Employee → Tour (employee on tour)
+Employee.hasMany(Tour, { foreignKey: 'employee_id', as: 'tours' });
+Tour.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee' });
+// Tour → Employee (creator / admin who assigned the tour)
+Tour.belongsTo(Employee, { foreignKey: 'created_by', as: 'creator' });
+Employee.hasMany(Tour, { foreignKey: 'created_by', as: 'createdTours' });
+// Tour → Employee (canceller)
+Tour.belongsTo(Employee, { foreignKey: 'cancelled_by', as: 'canceller' });
+
 module.exports = {
   sequelize,
   Employee,
@@ -161,6 +171,7 @@ module.exports = {
   SalaryRevision,
   TourExpense,
   TourExpensePolicy,
+  Tour,
   Holiday,
   SystemSetting,
   AuthorisedSignatory,

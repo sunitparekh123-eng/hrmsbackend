@@ -216,8 +216,8 @@ const seed = async () => {
       esic_applicable: false,
       pf_contribution_mode: 'none',
       esic_contribution_mode: 'none',
-      shift_start_time: '09:00',
-      shift_end_time: '18:00',
+      shift_start_time: '10:00',
+      shift_end_time: '19:00',
       half_day_late_minutes: 60,
       is_first_login: false,
     });

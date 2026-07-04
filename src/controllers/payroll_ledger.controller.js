@@ -81,6 +81,19 @@ class PayrollLedgerController {
       return next(err);
     }
   }
+
+  // ── GET /payroll/employee/:employeeId/history — employee historical payroll entries ──
+  async getEmployeeHistory(req, res, next) {
+    try {
+      const { employeeId } = req.params;
+      const { year } = req.query;
+      const result = await payrollLedgerService.getEmployeeHistory(employeeId, { year });
+      return success(res, 'Employee payroll history fetched', result, 200);
+    } catch (err) {
+      logger.error(`[PayrollLedger] getEmployeeHistory error: ${err.message}`);
+      return next(err);
+    }
+  }
 }
 
 module.exports = new PayrollLedgerController();

@@ -239,6 +239,7 @@ class PayrollLedgerService {
 
       return {
         id: entry.id,
+        employeeId: emp.id,
         employeeCode: emp.emp_code,
         name: emp.name,
         location: emp.location || emp.office?.name || 'Unknown',
@@ -317,6 +318,7 @@ class PayrollLedgerService {
 
       return {
         id: entry.id,
+        employeeId: emp.id,
         employeeCode: emp.emp_code,
         name: emp.name,
         location: emp.location || emp.office?.name || 'Unknown',
@@ -444,6 +446,76 @@ class PayrollLedgerService {
       data: history,
       pagination: { page: parseInt(page), limit: parseInt(limit), total: count, totalPages: Math.ceil(count / limit) },
     };
+  }
+
+  async getEmployeeHistory(employeeId, { year } = {}) {
+    const where = { employee_id: employeeId };
+    const cycleWhere = {};
+    if (year) cycleWhere.year = parseInt(year);
+
+    const entries = await PayrollEntry.findAll({
+      where,
+      include: [{
+        model: PayrollCycle,
+        as: 'cycle',
+        where: Object.keys(cycleWhere).length > 0 ? cycleWhere : undefined,
+      }, {
+        model: Employee,
+        as: 'employee',
+        include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }]
+      }],
+      order: [
+        [{ model: PayrollCycle, as: 'cycle' }, 'year', 'DESC'],
+        [{ model: PayrollCycle, as: 'cycle' }, 'month_index', 'DESC']
+      ]
+    });
+
+    const history = await Promise.all(entries.map(async (entry) => {
+      const cycle = entry.cycle;
+      if (!cycle) return null;
+      const emp = entry.employee;
+      if (!emp) return null;
+
+      const { workingDays: dynamicDays } = await this._getDynamicDaysInMonth(cycle.month_index + 1, cycle.year);
+
+      const calculation = this._calculateRow({
+        ...emp.toJSON(),
+        ...entry.toJSON(),
+        fixed_gross: emp.fixed_gross,
+        pf_applicable: emp.pf_applicable,
+        pf_ceiling: emp.pf_ceiling,
+        esic_applicable: emp.esic_applicable,
+      }, dynamicDays);
+
+      return {
+        id: entry.id,
+        employeeId: emp.id,
+        employeeCode: emp.emp_code,
+        name: emp.name,
+        cycleId: cycle.id,
+        month: cycle.month,
+        month_index: cycle.month_index,
+        year: cycle.year,
+        status: entry.status || cycle.status || 'Draft',
+        absentDays: entry.absent_days || 0,
+        bonus: Number(entry.bonus) || 0,
+        previousArrears: Number(entry.previous_arrears) || 0,
+        incentive: Number(entry.incentive) || 0,
+        loanDeduction: Number(entry.loan_deduction) || 0,
+        otherDeduction: Number(entry.other_deduction) || 0,
+        uan: emp.uan || '--',
+        designation: emp.designation || '',
+        location: emp.location || emp.office?.name || 'Unknown',
+        company: emp.company?.name || emp.company_name || 'Apaar Logistics & Cold Supply Chain Pvt Ltd',
+        bankName: emp.bank_name || '--',
+        bankAccountNumber: emp.bank_account_number || '--',
+        pfNumber: emp.pf_number || '--',
+        workingDays: Math.max(0, dynamicDays - (entry.absent_days || 0)),
+        ...calculation,
+      };
+    }));
+
+    return history.filter(Boolean);
   }
 
   // ── API: PATCH /payroll/entry/:entryId — update a single entry ──

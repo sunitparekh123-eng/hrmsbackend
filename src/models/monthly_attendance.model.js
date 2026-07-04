@@ -45,6 +45,11 @@ const MonthlyAttendance = sequelize.define('MonthlyAttendance', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
+  tour_days: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Days the employee was on company tour (treated as paid/present)',
+  },
   total_working_days: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

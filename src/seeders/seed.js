@@ -168,8 +168,9 @@ const seed = async () => {
       );
 
       // Simulate some usage (0-40% of accrued)
-      const used = Math.floor(Math.random() * Math.floor(monthsSinceJoining * 0.4));
-      const available = monthsSinceJoining - used;
+      const accrued = monthsSinceJoining * 2;
+      const used = Math.floor(Math.random() * Math.floor(accrued * 0.4));
+      const available = accrued - used;
 
       leaveBalanceData.push({
         employee_id: emp.id,

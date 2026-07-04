@@ -1,4 +1,4 @@
-const { AttendanceRecord, MonthlyAttendance, Employee, Office, sequelize, Holiday, SystemSetting } = require('../models');
+const { AttendanceRecord, MonthlyAttendance, Employee, Office, sequelize, Holiday, SystemSetting, Tour } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op, literal } = require('sequelize');
 const logger = require('../utils/logger');
@@ -7,6 +7,10 @@ const env = require('../config/env');
 const { getHolidaysInMonth, countWorkingDaysInMonth, isHolidayDate } = require('../utils/payrollHelper');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
+
+// Grace period (in minutes) allowed after shift start before marking attendance as "late".
+// e.g. 10 minutes means an employee punching in up to 10:10 for a 10:00 shift is still "present".
+const LATE_GRACE_MINUTES = parseInt(process.env.LATE_GRACE_MINUTES || '10', 10) || 0;
 
 /**
  * Returns the set of JS day-of-week numbers that are weekends based on the
@@ -220,7 +224,7 @@ class AttendanceService {
     // Determine status and late arrival using shift_start_time (default 10:00 AM = 600 mins)
     const localCheckInMins = getLocalMinutesFromMidnight(today);
     const shiftStartMins = timeStringToMinutes(employee.shift_start_time, 600); // default 10:00 AM = 600 mins
-    const shiftEndMins = timeStringToMinutes(employee.shift_end_time, 1080); // default 6:00 PM = 1080 mins
+    const shiftEndMins = timeStringToMinutes(employee.shift_end_time, 1140); // default 7:00 PM = 1140 mins
 
     // Enforce allowed punch-in window (2 hours before shift start until shift end)
     const allowedStart = shiftStartMins - 120;
@@ -238,10 +242,12 @@ class AttendanceService {
     }
 
     if (!isWithinWindow) {
-      throw new AppError(`Punch in is only allowed during shift hours (from ${_formatTime(employee.shift_start_time || '10:00:00')} to ${_formatTime(employee.shift_end_time || '18:00:00')} with 2 hours early buffer).`, 403);
+      throw new AppError(`Punch in is only allowed during shift hours (from ${_formatTime(employee.shift_start_time || '10:00:00')} to ${_formatTime(employee.shift_end_time || '19:00:00')} with 2 hours early buffer).`, 403);
     }
 
-    const isLate = localCheckInMins > shiftStartMins;
+    // Apply grace period: an employee is "late" only if they punch in AFTER (shift start + grace minutes).
+    // e.g. shift start 10:00 + 10 min grace => late only after 10:10.
+    const isLate = localCheckInMins > (shiftStartMins + LATE_GRACE_MINUTES);
     const lateByMinutes = isLate ? (localCheckInMins - shiftStartMins) : 0;
     const status = isLate ? 'late' : 'present';
 
@@ -344,7 +350,7 @@ class AttendanceService {
 
     // Check for early exit and overtime using shift_end_time
     const localCheckOutMins = getLocalMinutesFromMidnight(today);
-    const shiftEndMins = timeStringToMinutes(employee ? employee.shift_end_time : null, 1080); // default 6:00 PM = 1080 mins
+    const shiftEndMins = timeStringToMinutes(employee ? employee.shift_end_time : null, 1140); // default 7:00 PM = 1140 mins
 
     const isEarlyExit = localCheckOutMins < shiftEndMins;
     const earlyExitMinutes = isEarlyExit ? (shiftEndMins - localCheckOutMins) : 0;
@@ -400,24 +406,53 @@ class AttendanceService {
 
     const employee = await Employee.findByPk(employeeId);
 
+    // ── Check tour blocking ──
+    // If the employee is on an active tour today, punching is disabled.
+    let isOnTour = false;
+    let tourInfo = null;
+    const activeTour = await Tour.findOne({
+      where: {
+        employee_id: employeeId,
+        status: 'active',
+        start_date: { [Op.lte]: dateStr },
+        end_date: { [Op.gte]: dateStr },
+      },
+    });
+    if (activeTour) {
+      isOnTour = true;
+      tourInfo = {
+        id: activeTour.id,
+        tour_code: activeTour.tour_code,
+        title: activeTour.title,
+        from_location: activeTour.from_location,
+        to_location: activeTour.to_location,
+        start_date: activeTour.start_date,
+        end_date: activeTour.end_date,
+      };
+    }
+
     // ── Check holiday / weekend blocking ──
     let disabledReason = null;
-    const holidayName = await _getHolidayName(dateStr);
-    if (holidayName) {
-      disabledReason = `Today is a public holiday: ${holidayName}`;
+    if (isOnTour) {
+      disabledReason = `You are on a company tour (${activeTour.title}). No need to punch in.`;
     } else {
-      const weekendDays = await _getWeekendDays();
-      const localToday = getLocalDate(today);
-      if (weekendDays.includes(localToday.getDay())) {
-        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        disabledReason = `Today is ${dayNames[localToday.getDay()]} — a weekend off`;
+      const holidayName = await _getHolidayName(dateStr);
+      if (holidayName) {
+        disabledReason = `Today is a public holiday: ${holidayName}`;
+      } else {
+        const weekendDays = await _getWeekendDays();
+        const localToday = getLocalDate(today);
+        if (weekendDays.includes(localToday.getDay())) {
+          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          disabledReason = `Today is ${dayNames[localToday.getDay()]} — a weekend off`;
+        }
       }
     }
 
     // Shift calculations (default 10:00 AM - 6:00 PM)
     const localMins = getLocalMinutesFromMidnight(today);
     const shiftStartMins = timeStringToMinutes(employee ? employee.shift_start_time : null, 600); // 10:00 AM = 600 mins
-    const shiftEndMins = timeStringToMinutes(employee ? employee.shift_end_time : null, 1080); // 6:00 PM = 1080 mins
+    const shiftEndMins = timeStringToMinutes(employee ? employee.shift_end_time : null, 1140); // 7:00 PM = 1140 mins
 
     const allowedStart = shiftStartMins - 120; // 2 hour early buffer
     const allowedEnd = shiftEndMins;
@@ -447,6 +482,8 @@ class AttendanceService {
       isPunchInAllowed,
       isPunchOutAllowed,
       disabledReason,
+      isOnTour,
+      tour: tourInfo,
       record: record || null,
     };
   }
@@ -621,6 +658,7 @@ class AttendanceService {
         if (record.status === 'present') { status = 'Present'; presentCount++; }
         else if (record.status === 'late') { status = 'Late'; lateCount++; presentCount++; }
         else if (record.status === 'half_day') { status = 'Half Day'; presentCount++; }
+        else if (record.status === 'tour') { status = 'Tour'; presentCount++; }
         else { status = 'Absent'; absentCount++; }
 
         punchIn = record.check_in_time;
@@ -763,6 +801,9 @@ class AttendanceService {
       if (r.status === 'absent') status = 'Absent';
       else if (r.status === 'late') status = 'Late';
       else if (r.status === 'half_day') status = 'Half Day';
+      else if (r.status === 'tour') status = 'Tour';
+      else if (r.status === 'weekend') status = 'Weekend';
+      else if (r.status === 'holiday') status = 'Holiday';
 
       // Format overtime
       let overtimeStr = '---';
@@ -923,7 +964,7 @@ class AttendanceService {
 
       // Build daily grid string
       let grid = '';
-      let presentCount = 0, absentCount = 0, woffCount = 0, leaveCount = 0, holidayCount = 0;
+      let presentCount = 0, absentCount = 0, woffCount = 0, leaveCount = 0, holidayCount = 0, tourCount = 0;
 
       let dObj = new Date(startDate);
       while (dObj <= endDate) {
@@ -943,6 +984,8 @@ class AttendanceService {
             grid += 'P'; presentCount++;
           } else if (record.status === 'half_day') {
             grid += 'P'; presentCount++; // treat half day as present for grid
+          } else if (record.status === 'tour') {
+            grid += 'T'; tourCount++; // tour is paid like present but shown distinctly
           } else if (record.status === 'absent') {
             grid += 'A'; absentCount++;
           } else if (record.status === 'holiday') {
@@ -975,6 +1018,7 @@ class AttendanceService {
       const w = woffCount;
       const l = 0; // half-days are already included in presentCount (shown as 'P')
       const h = holidayCount;
+      const t = tourCount;
 
       return {
         id: emp.emp_code,
@@ -987,6 +1031,7 @@ class AttendanceService {
         woff: w,
         leave: l,
         holiday: h,
+        tour: t,
         absent: a,
         grid,
         employee_id: emp.id,
@@ -1022,7 +1067,7 @@ class AttendanceService {
     let totalMinutes = 0;
 
     const shiftStartTimeStr = emp.shift_start_time || '10:00:00';
-    const shiftEndTimeStr = emp.shift_end_time || '18:00:00';
+    const shiftEndTimeStr = emp.shift_end_time || '19:00:00';
 
     if (recordStatus === 'present') {
       checkInTime = createTzDate(dateStr, shiftStartTimeStr);
@@ -1139,6 +1184,7 @@ class AttendanceService {
     const lateDays = records.filter(r => r.status === 'late').length;
     const halfDays = records.filter(r => r.status === 'half_day').length;
     const absentDays = records.filter(r => r.status === 'absent').length;
+    const tourDays = records.filter(r => r.status === 'tour').length;
 
     // ── Fetch dynamic weekend policy & holidays ──
     const weekendDays = await _getWeekendDays();
@@ -1159,8 +1205,9 @@ class AttendanceService {
 
     // Calculate working days (excluding weekends AND holidays)
     const totalWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
+    // Tour days are treated as paid/present for attendance percentage
     const attendancePercentage = totalWorkingDays > 0
-      ? Math.round(((presentDays + lateDays + halfDays * 0.5) / totalWorkingDays) * 100)
+      ? Math.round(((presentDays + lateDays + halfDays * 0.5 + tourDays) / totalWorkingDays) * 100)
       : 0;
 
     await MonthlyAttendance.upsert({
@@ -1173,6 +1220,7 @@ class AttendanceService {
       half_days: halfDays,
       weekend_days: weekendDaysCount,
       holiday_days: holidayDaysCount,
+      tour_days: tourDays,
       total_working_days: totalWorkingDays,
       attendance_percentage: attendancePercentage,
     });
@@ -1201,6 +1249,349 @@ class AttendanceService {
       count++;
     }
     return count;
+  }
+
+  /**
+   * Generate a unique tour code like TOUR-2026-0001
+   */
+  async _generateTourCode() {
+    const year = new Date().getFullYear();
+    const prefix = `TOUR-${year}-`;
+    const lastTour = await Tour.findOne({
+      where: { tour_code: { [Op.like]: `${prefix}%` } },
+      order: [['id', 'DESC']],
+    });
+    let nextNum = 1;
+    if (lastTour && lastTour.tour_code) {
+      const parts = lastTour.tour_code.split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(num)) nextNum = num + 1;
+    }
+    return `${prefix}${String(nextNum).padStart(4, '0')}`;
+  }
+
+  /**
+   * Mark an employee on tour for a date range.
+   * Creates a Tour record + AttendanceRecord(status='tour') for each working day.
+   * Tour days are treated as PAID (like present) — no salary deduction.
+   */
+  async markTour(adminId, { employeeId, title, startDate, endDate, description, fromLocation, toLocation }) {
+    if (!employeeId || !title || !startDate || !endDate) {
+      const err = new Error('employeeId, title, startDate and endDate are required');
+      err.status = 400;
+      throw err;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      const err = new Error('Invalid date format');
+      err.status = 400;
+      throw err;
+    }
+    if (end < start) {
+      const err = new Error('end_date cannot be before start_date');
+      err.status = 400;
+      throw err;
+    }
+
+    const employee = await Employee.findByPk(employeeId);
+    if (!employee) {
+      const err = new Error('Employee not found');
+      err.status = 404;
+      throw err;
+    }
+
+    // Check for overlapping active tours
+    const overlapping = await Tour.findOne({
+      where: {
+        employee_id: employeeId,
+        status: 'active',
+        [Op.or]: [
+          { start_date: { [Op.between]: [startDate, endDate] } },
+          { end_date: { [Op.between]: [startDate, endDate] } },
+          { [Op.and]: [{ start_date: { [Op.lte]: startDate } }, { end_date: { [Op.gte]: endDate } }] },
+        ],
+      },
+    });
+    if (overlapping) {
+      const err = new Error(`Employee already has an active tour (${overlapping.tour_code}) overlapping these dates`);
+      err.status = 409;
+      throw err;
+    }
+
+    const tourCode = await this._generateTourCode();
+
+    const transaction = await sequelize.transaction();
+    try {
+      const tour = await Tour.create({
+        tour_code: tourCode,
+        employee_id: employeeId,
+        title,
+        description: description || null,
+        from_location: fromLocation || null,
+        to_location: toLocation || null,
+        start_date: startDate,
+        end_date: endDate,
+        status: 'active',
+        created_by: adminId,
+      }, { transaction });
+
+      // Create attendance records with status='tour' for each day in range
+      const weekendDays = await _getWeekendDays();
+      const createdRecords = [];
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+
+        // Skip weekends — tour on weekends is implicit (no record needed)
+        if (!weekendDays.includes(cursor.getDay())) {
+          // Check if holiday — skip holidays too
+          const holiday = await Holiday.findOne({ where: { date: dateStr } });
+          if (!holiday) {
+            // Upsert attendance record as 'tour'
+            const existing = await AttendanceRecord.findOne({ where: { employee_id: employeeId, date: dateStr }, transaction });
+            if (existing) {
+              await existing.update({
+                status: 'tour',
+                check_in_time: null,
+                check_out_time: null,
+                total_minutes: 0,
+                late_by_minutes: 0,
+                early_exit_minutes: 0,
+                remarks: `On tour: ${title} (${tourCode})`,
+              }, { transaction });
+              createdRecords.push(existing);
+            } else {
+              const rec = await AttendanceRecord.create({
+                employee_id: employeeId,
+                date: dateStr,
+                status: 'tour',
+                total_minutes: 0,
+                remarks: `On tour: ${title} (${tourCode})`,
+              }, { transaction });
+              createdRecords.push(rec);
+            }
+          }
+        }
+
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      await transaction.commit();
+
+      // Update monthly attendance for affected months
+      const affectedMonths = new Set();
+      const c2 = new Date(start);
+      while (c2 <= end) {
+        affectedMonths.add(`${c2.getFullYear()}-${c2.getMonth() + 1}`);
+        c2.setMonth(c2.getMonth() + 1);
+      }
+      for (const key of affectedMonths) {
+        const [yr, mo] = key.split('-').map(Number);
+        const anyDate = new Date(yr, mo - 1, 15);
+        await this._updateMonthlyAttendance(employeeId, `${yr}-${String(mo).padStart(2, '0')}-${String(anyDate.getDate()).padStart(2, '0')}`);
+      }
+
+      return {
+        tour,
+        attendanceRecordsCreated: createdRecords.length,
+        message: `Tour marked successfully. ${createdRecords.length} working day(s) marked as tour (paid).`,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Get all tours with pagination + filters.
+   */
+  async getAllTours({ page = 1, limit = 20, search, status, employee_id, from, to, office_id, company_id } = {}) {
+    const where = {};
+    if (status) where.status = status;
+    if (employee_id) where.employee_id = employee_id;
+    if (from || to) {
+      where[Op.or] = [];
+      if (from && to) {
+        where[Op.or].push({ start_date: { [Op.between]: [from, to] } });
+        where[Op.or].push({ end_date: { [Op.between]: [from, to] } });
+        where[Op.or].push({ [Op.and]: [{ start_date: { [Op.lte]: from } }, { end_date: { [Op.gte]: to } }] });
+      } else if (from) {
+        where[Op.or].push({ start_date: { [Op.gte]: from } });
+        where[Op.or].push({ end_date: { [Op.gte]: from } });
+      } else {
+        where[Op.or].push({ start_date: { [Op.lte]: to } });
+        where[Op.or].push({ end_date: { [Op.lte]: to } });
+      }
+    }
+
+    const empInclude = { model: Employee, as: 'employee', attributes: ['id', 'employee_id', 'first_name', 'last_name', 'email', 'office_id', 'company_id'], include: [] };
+    const empWhere = {};
+    if (search) {
+      empWhere[Op.or] = [
+        { first_name: { [Op.iLike]: `%${search}%` } },
+        { last_name: { [Op.iLike]: `%${search}%` } },
+        { employee_id: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+    if (office_id) empWhere.office_id = office_id;
+    if (company_id) empWhere.company_id = company_id;
+    empInclude.where = empWhere;
+    empInclude.required = Object.keys(empWhere).length > 0;
+
+    const offset = (page - 1) * limit;
+    const { rows, count } = await Tour.findAndCountAll({
+      where,
+      include: [
+        empInclude,
+        { model: Employee, as: 'creator', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
+      ],
+      order: [['start_date', 'DESC'], ['id', 'DESC']],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    return {
+      tours: rows,
+      pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+    };
+  }
+
+  /**
+   * Get a single tour by ID with its attendance records.
+   */
+  async getTourById(tourId) {
+    const tour = await Tour.findByPk(tourId, {
+      include: [
+        { model: Employee, as: 'employee', attributes: ['id', 'employee_id', 'first_name', 'last_name', 'email'] },
+        { model: Employee, as: 'creator', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
+        { model: Employee, as: 'canceller', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
+      ],
+    });
+    if (!tour) {
+      const err = new Error('Tour not found');
+      err.status = 404;
+      throw err;
+    }
+
+    // Fetch attendance records for the tour date range with status='tour'
+    const attendanceRecords = await AttendanceRecord.findAll({
+      where: {
+        employee_id: tour.employee_id,
+        date: { [Op.between]: [tour.start_date, tour.end_date] },
+        status: 'tour',
+      },
+      order: [['date', 'ASC']],
+    });
+
+    return { tour, attendanceRecords };
+  }
+
+  /**
+   * Cancel a tour. Past tour days revert to 'absent' (since employee didn't punch).
+   * Future tour days are deleted entirely.
+   */
+  async cancelTour(tourId, adminId, reason) {
+    const tour = await Tour.findByPk(tourId);
+    if (!tour) {
+      const err = new Error('Tour not found');
+      err.status = 404;
+      throw err;
+    }
+    if (tour.status === 'cancelled') {
+      const err = new Error('Tour is already cancelled');
+      err.status = 400;
+      throw err;
+    }
+
+    const todayStr = getLocalDateString();
+    const transaction = await sequelize.transaction();
+    const affectedMonths = new Set();
+    try {
+      // Find all tour attendance records for this tour's date range
+      const tourRecords = await AttendanceRecord.findAll({
+        where: {
+          employee_id: tour.employee_id,
+          date: { [Op.between]: [tour.start_date, tour.end_date] },
+          status: 'tour',
+        },
+        transaction,
+      });
+
+      for (const rec of tourRecords) {
+        const [yr, mo] = rec.date.split('-').map(Number);
+        affectedMonths.add(`${yr}-${mo}`);
+
+        if (rec.date < todayStr) {
+          // Past date — employee didn't actually punch, so mark absent
+          await rec.update({
+            status: 'absent',
+            remarks: `Tour cancelled (${tour.tour_code}). Marked absent.`,
+          }, { transaction });
+        } else {
+          // Today or future — delete the record entirely
+          await rec.destroy({ transaction });
+        }
+      }
+
+      await tour.update({
+        status: 'cancelled',
+        cancelled_by: adminId,
+        cancelled_at: new Date(),
+        cancel_reason: reason || null,
+      }, { transaction });
+
+      await transaction.commit();
+
+      // Rebuild monthly attendance for affected months
+      for (const key of affectedMonths) {
+        const [yr, mo] = key.split('-').map(Number);
+        const anyDate = new Date(yr, mo - 1, 15);
+        await this._updateMonthlyAttendance(tour.employee_id, `${yr}-${String(mo).padStart(2, '0')}-${String(anyDate.getDate()).padStart(2, '0')}`);
+      }
+
+      return { tour, message: 'Tour cancelled successfully.' };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Check if an employee is currently on tour (for mobile app).
+   */
+  async getEmployeeTourStatus(employeeId) {
+    const todayStr = getLocalDateString();
+    const activeTour = await Tour.findOne({
+      where: {
+        employee_id: employeeId,
+        status: 'active',
+        start_date: { [Op.lte]: todayStr },
+        end_date: { [Op.gte]: todayStr },
+      },
+      order: [['start_date', 'DESC']],
+    });
+
+    if (!activeTour) {
+      return { isOnTour: false, tour: null };
+    }
+
+    return {
+      isOnTour: true,
+      tour: {
+        id: activeTour.id,
+        tour_code: activeTour.tour_code,
+        title: activeTour.title,
+        description: activeTour.description,
+        from_location: activeTour.from_location,
+        to_location: activeTour.to_location,
+        start_date: activeTour.start_date,
+        end_date: activeTour.end_date,
+      },
+    };
   }
 }
 

@@ -146,6 +146,75 @@ class AttendanceController {
       return next(err);
     }
   }
+
+  // ── Tour management ──
+
+  // Admin/HR: Mark an employee on tour
+  async markTour(req, res, next) {
+    try {
+      const adminId = req.employee.id;
+      const { employeeId, title, startDate, endDate, description, fromLocation, toLocation } = req.body;
+      const result = await attendanceService.markTour(adminId, {
+        employeeId, title, startDate, endDate, description, fromLocation, toLocation,
+      });
+      return success(res, result.message || 'Tour marked successfully', result, 201);
+    } catch (err) {
+      logger.error(`Mark tour error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  // Admin/HR: Get all tours (paginated + filters)
+  async getAllTours(req, res, next) {
+    try {
+      const { page, limit, search, status, employee_id, from, to, office_id, company_id } = req.query;
+      const result = await attendanceService.getAllTours({
+        page, limit, search, status, employee_id, from, to, office_id, company_id,
+      });
+      return paginated(res, 'Tours fetched', result.tours, result.pagination, 200);
+    } catch (err) {
+      logger.error(`Get all tours error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  // Admin/HR: Get a single tour by ID
+  async getTourById(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await attendanceService.getTourById(id);
+      return success(res, 'Tour details fetched', result, 200);
+    } catch (err) {
+      logger.error(`Get tour by id error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  // Admin/HR: Cancel a tour
+  async cancelTour(req, res, next) {
+    try {
+      const adminId = req.employee.id;
+      const { id } = req.params;
+      const { reason } = req.body;
+      const result = await attendanceService.cancelTour(id, adminId, reason);
+      return success(res, result.message || 'Tour cancelled successfully', result, 200);
+    } catch (err) {
+      logger.error(`Cancel tour error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  // Employee: Check if currently on tour (mobile app)
+  async getTourStatus(req, res, next) {
+    try {
+      const employeeId = req.employee.id;
+      const result = await attendanceService.getEmployeeTourStatus(employeeId);
+      return success(res, 'Tour status fetched', result, 200);
+    } catch (err) {
+      logger.error(`Get tour status error: ${err.message}`);
+      return next(err);
+    }
+  }
 }
 
 module.exports = new AttendanceController();

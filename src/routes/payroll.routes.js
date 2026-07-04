@@ -24,6 +24,7 @@ router.get('/current', payrollController.getCurrentPayslip);
 
 // Admin/HR — legacy payslip
 router.get('/employee/:employeeId', selfOrAdmin(), validate(payslipQuerySchema, 'query'), payrollController.getEmployeePayslips);
+router.get('/employee/:employeeId/history', authorize('admin', 'hr', 'manager'), payrollLedgerController.getEmployeeHistory);
 router.post('/generate', authorize('admin', 'hr'), payrollController.generatePayslips);
 router.patch('/payslips/:id/mark-paid', authorize('admin', 'hr'), payrollController.markPayslipPaid);
 

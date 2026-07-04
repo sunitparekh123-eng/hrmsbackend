@@ -1,4 +1,4 @@
-const { Loan, LoanPayment, Employee, sequelize } = require('../models');
+const { Loan, LoanPayment, Employee, Company, sequelize } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
@@ -49,6 +49,7 @@ class LoanService {
           model: Employee,
           as: 'employee',
           attributes: ['id', 'emp_code', 'name', 'department', 'designation', 'profile_image'],
+          include: [{ model: Company, as: 'company', attributes: ['id', 'name'] }]
         },
       ],
     });
@@ -120,6 +121,7 @@ class LoanService {
         model: Employee,
         as: 'employee',
         attributes: ['id', 'emp_code', 'name', 'department', 'designation', 'profile_image'],
+        include: [{ model: Company, as: 'company', attributes: ['id', 'name'] }]
       }],
       order: [['created_at', 'DESC']],
       limit,

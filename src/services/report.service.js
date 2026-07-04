@@ -269,6 +269,7 @@ class ReportService {
         halfDays: monthly ? monthly.half_days : 0,
         holidayDays: monthly ? monthly.holiday_days : 0,
         weekendDays: monthly ? monthly.weekend_days : 0,
+        tourDays: monthly ? monthly.tour_days : 0,
       };
     });
 

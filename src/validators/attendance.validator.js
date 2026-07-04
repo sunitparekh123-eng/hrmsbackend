@@ -66,6 +66,55 @@ const manualEntrySchema = Joi.object({
   reason: Joi.string().allow('', null).max(500).optional(),
 });
 
+// ── Tour management schemas ──
+const markTourSchema = Joi.object({
+  employeeId: Joi.number().integer().positive().required()
+    .messages({
+      'number.base': 'Employee ID must be a number',
+      'any.required': 'Employee ID is required',
+    }),
+  title: Joi.string().trim().min(3).max(200).required()
+    .messages({
+      'string.empty': 'Tour title is required',
+      'string.min': 'Tour title must be at least 3 characters',
+      'any.required': 'Tour title is required',
+    }),
+  description: Joi.string().allow('', null).max(2000).optional(),
+  fromLocation: Joi.string().allow('', null).max(150).optional(),
+  toLocation: Joi.string().allow('', null).max(150).optional(),
+  startDate: Joi.date().iso().required()
+    .messages({
+      'date.format': 'Start date must be in YYYY-MM-DD format',
+      'any.required': 'Start date is required',
+    }),
+  endDate: Joi.date().iso().required()
+    .messages({
+      'date.format': 'End date must be in YYYY-MM-DD format',
+      'any.required': 'End date is required',
+    }),
+}).custom((value, helpers) => {
+  if (new Date(value.endDate) < new Date(value.startDate)) {
+    return helpers.error('any.invalid', { message: 'End date cannot be before start date' });
+  }
+  return value;
+});
+
+const tourListQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).optional(),
+  limit: Joi.number().integer().min(1).max(100).optional(),
+  search: Joi.string().allow('', null).optional(),
+  status: Joi.string().valid('active', 'completed', 'cancelled').optional(),
+  employee_id: Joi.number().integer().optional(),
+  from: Joi.date().iso().optional(),
+  to: Joi.date().iso().optional(),
+  office_id: Joi.number().integer().optional(),
+  company_id: Joi.number().integer().optional(),
+});
+
+const cancelTourSchema = Joi.object({
+  reason: Joi.string().allow('', null).max(500).optional(),
+});
+
 module.exports = {
   punchInSchema,
   punchOutSchema,
@@ -74,4 +123,7 @@ module.exports = {
   adminLiveQuerySchema,
   adminHistoryQuerySchema,
   adminMonthlyQuerySchema,
+  markTourSchema,
+  tourListQuerySchema,
+  cancelTourSchema,
 };

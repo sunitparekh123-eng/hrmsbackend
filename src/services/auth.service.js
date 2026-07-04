@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { Employee, SalaryStructure, SalaryRevision, LeaveBalance, Letter, Notification, sequelize } = require('../models');
+const { Employee, SalaryStructure, SalaryRevision, LeaveBalance, Letter, Notification, Office, sequelize } = require('../models');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { AppError } = require('../middleware/error.middleware');
 const logger = require('../utils/logger');
@@ -462,6 +462,16 @@ class AuthService {
       ? employee.salaryStructures[0]
       : null;
 
+    // Fetch ALL active offices for the employee's company so the mobile
+    // app can validate geo-fence against every office location (not just
+    // the employee's primary office). This enables multi-location punch
+    // in/out — e.g. punch in from Indore office 1, punch out from office 2.
+    const companyOffices = await Office.findAll({
+      where: { company_id: employee.company_id, is_active: true },
+      attributes: ['id', 'name', 'address', 'city', 'latitude', 'longitude', 'radius_meters'],
+      order: [['name', 'ASC']],
+    });
+
     // Transform to flat shape matching what the frontend expects
     return {
       id: employee.id,
@@ -481,6 +491,18 @@ class AuthService {
         longitude: employee.office.longitude,
         radius_meters: employee.office.radius_meters,
       } : null,
+      // All active offices for the company — used by the mobile app to
+      // validate geo-fence against every office location so employees can
+      // punch in/out from ANY company office, not just their primary one.
+      company_offices: companyOffices.map((o) => ({
+        id: o.id,
+        name: o.name,
+        address: o.address,
+        city: o.city,
+        latitude: o.latitude,
+        longitude: o.longitude,
+        radius_meters: o.radius_meters,
+      })),
       company_id: employee.company_id,
       company: employee.company ? { id: employee.company.id, name: employee.company.name } : null,
       profile_image: employee.profile_image,

@@ -161,10 +161,10 @@ const ESIC_RATES = {
 const ESIC_WAGE_THRESHOLD = 21000;
 
 // Default leave allocations per type (annual)
-// Single leave type system — 1 leave earned per month, max 2-month carry-forward
+// Single leave type system — 2 leaves earned per month, max 3-month carry-forward
 const LEAVE_ACCRUAL = {
-  MONTHLY_ACCRUAL: 1,         // 1 leave per month
-  MAX_CARRY_FORWARD_MONTHS: 2, // carry forward max 2 months, then resets to 0
+  MONTHLY_ACCRUAL: 2,         // 2 leaves per month
+  MAX_CARRY_FORWARD_MONTHS: 3, // carry forward max 3 months, then resets to 0
 };
 
 module.exports = {

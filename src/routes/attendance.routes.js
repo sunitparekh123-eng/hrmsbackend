@@ -3,7 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth.middleware');
 const { authorize, selfOrAdmin } = require('../middleware/role.middleware');
 const { validate } = require('../middleware/validate.middleware');
-const { punchInSchema, punchOutSchema, monthlyQuerySchema, manualEntrySchema, adminLiveQuerySchema, adminHistoryQuerySchema, adminMonthlyQuerySchema } = require('../validators/attendance.validator');
+const { punchInSchema, punchOutSchema, monthlyQuerySchema, manualEntrySchema, adminLiveQuerySchema, adminHistoryQuerySchema, adminMonthlyQuerySchema, markTourSchema, tourListQuerySchema, cancelTourSchema } = require('../validators/attendance.validator');
 const attendanceController = require('../controllers/attendance.controller');
 
 // All routes require authentication
@@ -26,5 +26,18 @@ router.get('/admin/live', authorize('admin', 'hr'), validate(adminLiveQuerySchem
 router.get('/admin/history-all', authorize('admin', 'hr'), validate(adminHistoryQuerySchema, 'query'), attendanceController.getAllAttendanceHistory);
 router.get('/admin/monthly-all', authorize('admin', 'hr'), validate(adminMonthlyQuerySchema, 'query'), attendanceController.getAllMonthlyAttendance);
 router.post('/admin/manual-entry', authorize('admin', 'hr'), validate(manualEntrySchema), attendanceController.manualEntry);
+
+// ── Tour management routes ──
+// Admin/HR: Mark an employee on tour (creates tour + attendance records)
+router.post('/admin/tours', authorize('admin', 'hr'), validate(markTourSchema), attendanceController.markTour);
+// Admin/HR: Get all tours (paginated + filters)
+router.get('/admin/tours', authorize('admin', 'hr'), validate(tourListQuerySchema, 'query'), attendanceController.getAllTours);
+// Admin/HR: Get a single tour by ID (with attendance records)
+router.get('/admin/tours/:id', authorize('admin', 'hr'), attendanceController.getTourById);
+// Admin/HR: Cancel a tour (past days → absent, future days → deleted)
+router.patch('/admin/tours/:id/cancel', authorize('admin', 'hr'), validate(cancelTourSchema), attendanceController.cancelTour);
+
+// Employee: Check if currently on tour (mobile app punch screen)
+router.get('/tour-status', attendanceController.getTourStatus);
 
 module.exports = router;
