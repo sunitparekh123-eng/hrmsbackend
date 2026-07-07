@@ -365,7 +365,7 @@ class LeaveService {
    * Runs month-by-month from last_accrual_month to current month.
    *
    * Rules:
-   * - +2 EL earned per month
+   * - +2 EL earned per month (onboarding grants 2 EL)
    * - If no leave used for 3 consecutive months → all accrued leaves lapse (available = admin_granted)
    * - Admin-granted leaves never lapse
    */
@@ -412,7 +412,7 @@ class LeaveService {
         consecutive += 1;
       }
 
-      // If 2+ consecutive months without usage, all accrued leaves lapse
+      // If 3+ consecutive months without usage, all accrued leaves lapse
       if (consecutive >= LEAVE_ACCRUAL.MAX_CARRY_FORWARD_MONTHS) {
         const accruedLeaves = available - balance.admin_granted;
         if (accruedLeaves > 0) {
@@ -422,7 +422,7 @@ class LeaveService {
         consecutive = 0; // Reset after lapse
       }
 
-      // Add monthly accrual (+1 EL)
+      // Add monthly accrual (+2 EL)
       available += LEAVE_ACCRUAL.MONTHLY_ACCRUAL;
     }
 
@@ -443,7 +443,7 @@ class LeaveService {
 
   /**
    * Create the initial leave balance for a new employee.
-   * Starts with 1 EL (the current month's accrual).
+   * Starts with 2 EL (the current month's accrual).
    */
   async _createInitialBalance(employeeId) {
     const now = new Date();

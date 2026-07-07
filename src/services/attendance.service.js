@@ -1295,17 +1295,20 @@ class AttendanceService {
       throw err;
     }
 
-    const employee = await Employee.findByPk(employeeId);
+    const employee = (typeof employeeId === 'number' || /^\d+$/.test(employeeId))
+      ? await Employee.findByPk(employeeId)
+      : await Employee.findOne({ where: { emp_code: employeeId } });
     if (!employee) {
       const err = new Error('Employee not found');
       err.status = 404;
       throw err;
     }
+    const resolvedEmployeeId = employee.id;
 
     // Check for overlapping active tours
     const overlapping = await Tour.findOne({
       where: {
-        employee_id: employeeId,
+        employee_id: resolvedEmployeeId,
         status: 'active',
         [Op.or]: [
           { start_date: { [Op.between]: [startDate, endDate] } },
@@ -1326,7 +1329,7 @@ class AttendanceService {
     try {
       const tour = await Tour.create({
         tour_code: tourCode,
-        employee_id: employeeId,
+        employee_id: resolvedEmployeeId,
         title,
         description: description || null,
         from_location: fromLocation || null,
@@ -1347,10 +1350,10 @@ class AttendanceService {
         // Skip weekends — tour on weekends is implicit (no record needed)
         if (!weekendDays.includes(cursor.getDay())) {
           // Check if holiday — skip holidays too
-          const holiday = await Holiday.findOne({ where: { date: dateStr } });
-          if (!holiday) {
+          const holidayName = await _getHolidayName(dateStr);
+          if (!holidayName) {
             // Upsert attendance record as 'tour'
-            const existing = await AttendanceRecord.findOne({ where: { employee_id: employeeId, date: dateStr }, transaction });
+            const existing = await AttendanceRecord.findOne({ where: { employee_id: resolvedEmployeeId, date: dateStr }, transaction });
             if (existing) {
               await existing.update({
                 status: 'tour',
@@ -1364,7 +1367,7 @@ class AttendanceService {
               createdRecords.push(existing);
             } else {
               const rec = await AttendanceRecord.create({
-                employee_id: employeeId,
+                employee_id: resolvedEmployeeId,
                 date: dateStr,
                 status: 'tour',
                 total_minutes: 0,
@@ -1390,7 +1393,7 @@ class AttendanceService {
       for (const key of affectedMonths) {
         const [yr, mo] = key.split('-').map(Number);
         const anyDate = new Date(yr, mo - 1, 15);
-        await this._updateMonthlyAttendance(employeeId, `${yr}-${String(mo).padStart(2, '0')}-${String(anyDate.getDate()).padStart(2, '0')}`);
+        await this._updateMonthlyAttendance(resolvedEmployeeId, `${yr}-${String(mo).padStart(2, '0')}-${String(anyDate.getDate()).padStart(2, '0')}`);
       }
 
       return {

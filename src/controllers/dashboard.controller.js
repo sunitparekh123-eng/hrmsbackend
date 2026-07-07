@@ -44,6 +44,37 @@ class DashboardController {
       return next(err);
     }
   }
+
+  async getAdminGovernance(req, res, next) {
+    try {
+      const result = await dashboardService.getAdminGovernance();
+      return success(res, 'Admin governance rules fetched', result, 200);
+    } catch (err) {
+      logger.error(`Get admin governance error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  async getAdminCompliance(req, res, next) {
+    try {
+      const result = await dashboardService.getAdminCompliance();
+      return success(res, 'Admin compliance audit fetched', result, 200);
+    } catch (err) {
+      logger.error(`Get admin compliance error: ${err.message}`);
+      return next(err);
+    }
+  }
+
+  async getAdminActivity(req, res, next) {
+    try {
+      const limit = parseInt(req.query.limit) || 8;
+      const result = await dashboardService.getAdminActivity(limit);
+      return success(res, 'Admin recent activities fetched', result, 200);
+    } catch (err) {
+      logger.error(`Get admin activity error: ${err.message}`);
+      return next(err);
+    }
+  }
 }
 
 module.exports = new DashboardController();

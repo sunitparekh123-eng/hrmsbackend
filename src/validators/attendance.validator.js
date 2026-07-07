@@ -68,9 +68,11 @@ const manualEntrySchema = Joi.object({
 
 // ── Tour management schemas ──
 const markTourSchema = Joi.object({
-  employeeId: Joi.number().integer().positive().required()
+  employeeId: Joi.alternatives().try(
+    Joi.number().integer().positive(),
+    Joi.string().trim()
+  ).required()
     .messages({
-      'number.base': 'Employee ID must be a number',
       'any.required': 'Employee ID is required',
     }),
   title: Joi.string().trim().min(3).max(200).required()

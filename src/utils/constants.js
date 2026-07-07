@@ -160,6 +160,22 @@ const ESIC_RATES = {
 
 const ESIC_WAGE_THRESHOLD = 21000;
 
+// ── Salary structure split rates (single source of truth) ──
+// fixedBasic = round(fixedGross * BASIC_SPLIT_RATE)
+// fixedHra   = round(fixedBasic * HRA_SPLIT_RATE)
+// fixedOther = fixedGross - fixedBasic - fixedHra
+const BASIC_SPLIT_RATE = 0.40;   // Basic = 40% of fixed gross
+const HRA_SPLIT_RATE   = 0.40;   // HRA   = 40% of basic
+
+// PF statutory ceiling — when pf_ceiling is enabled, PF is computed on
+// min(basic, PF_CEILING_AMOUNT)
+const PF_CEILING_AMOUNT = 15000;
+
+// Billing / payroll cycle definition (26th of previous month → 25th of current month)
+const BILLING_CYCLE_DAYS = 31;
+const BILLING_CYCLE_START_DAY = 26;  // cycle starts on the 26th
+const BILLING_CYCLE_END_DAY   = 25;  // cycle ends on the 25th of the next month
+
 // Default leave allocations per type (annual)
 // Single leave type system — 2 leaves earned per month, max 3-month carry-forward
 const LEAVE_ACCRUAL = {
@@ -190,4 +206,10 @@ module.exports = {
   PF_RATES,
   ESIC_RATES,
   ESIC_WAGE_THRESHOLD,
+  BASIC_SPLIT_RATE,
+  HRA_SPLIT_RATE,
+  PF_CEILING_AMOUNT,
+  BILLING_CYCLE_DAYS,
+  BILLING_CYCLE_START_DAY,
+  BILLING_CYCLE_END_DAY,
 };

@@ -30,7 +30,7 @@ const LeaveBalance = sequelize.define('LeaveBalance', {
   lapsed: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
-    comment: 'Total leaves that lapsed due to 2-month no-usage rule',
+    comment: 'Total leaves that lapsed due to 3-month no-usage rule',
   },
   last_accrual_month: {
     type: DataTypes.STRING(7),
@@ -40,7 +40,7 @@ const LeaveBalance = sequelize.define('LeaveBalance', {
   consecutive_no_usage_months: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
-    comment: 'Count of consecutive months without leave usage (resets on usage, max 2 triggers lapse)',
+    comment: 'Count of consecutive months without leave usage (resets on usage, max 3 triggers lapse)',
   },
 }, {
   tableName: 'leave_balances',
