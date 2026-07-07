@@ -3,7 +3,7 @@ const { Employee, SalaryStructure, SalaryRevision, LeaveBalance, Letter, Notific
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { AppError } = require('../middleware/error.middleware');
 const logger = require('../utils/logger');
-const { LEAVE_DEFAULTS, LEAVE_TYPES, SALARY_REVISION_TYPES } = require('../utils/constants');
+const { LEAVE_DEFAULTS, LEAVE_TYPES, SALARY_REVISION_TYPES, LEAVE_ACCRUAL } = require('../utils/constants');
 const offerLetterService = require('./offer_letter.service');
 const emailService = require('./email.service');
 
@@ -205,14 +205,17 @@ class AuthService {
           approved_by: issuedBy,
         }, { transaction: t });
 
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
         // 4. Create initial LeaveBalance record for the new employee
         await LeaveBalance.create({
           employee_id: employee.id,
-          available: 0,
+          available: LEAVE_ACCRUAL.MONTHLY_ACCRUAL,
           used: 0,
           admin_granted: 0,
           lapsed: 0,
-          last_accrual_month: null,
+          last_accrual_month: currentMonth,
           consecutive_no_usage_months: 0,
         }, { transaction: t });
 
