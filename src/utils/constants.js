@@ -116,10 +116,10 @@ const GEO_FENCE = {
   MAX_RADIUS: 5000,    // meters
 };
 
-// Professional Tax slabs (Maharashtra — monthly)
+// Professional Tax slabs (Madhya Pradesh — monthly)
 const PT_SLABS = [
-  { from: 0, to: 15000, amount: 0 },
-  { from: 15001, to: 25000, amount: 125 },
+  { from: 0, to: 18750, amount: 0 },
+  { from: 18751, to: 25000, amount: 125 },
   { from: 25001, to: 33333, amount: 167 },
   { from: 33334, to: Infinity, amount: 208 },
 ];

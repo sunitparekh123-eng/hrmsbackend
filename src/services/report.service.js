@@ -2,7 +2,7 @@ const { Employee, MonthlyAttendance, PayrollEntry, PayrollCycle, Office, Company
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PT_SLABS } = require('../utils/constants');
-const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays, getPTSlabs } = require('../utils/payrollHelper');
 
 /**
  * Report service — production-grade report data aggregator.
@@ -28,7 +28,7 @@ class ReportService {
   // ─────────────────────────────────────────────────────────────────
   // Core calculation (mirrors PayrollLedgerService._calculateRow)
   // ─────────────────────────────────────────────────────────────────
-  _calculateRow(row, workingDays, elapsedWorkingDays) {
+  _calculateRow(row, workingDays, elapsedWorkingDays, slabs) {
     const D = workingDays;
     const elapsed = elapsedWorkingDays != null ? Math.min(elapsedWorkingDays, D) : D;
     const payableDays = Math.max(0, elapsed - (row.absent_days || 0));
@@ -67,10 +67,14 @@ class ReportService {
 
     // PT
     let pt = 0;
-    for (const slab of PT_SLABS) {
-      if (proratedGross >= slab.from && proratedGross <= slab.to) {
-        pt = slab.amount;
-        break;
+    if (row.pt_applicable !== false) {
+      const activeSlabs = slabs || PT_SLABS;
+      for (const slab of activeSlabs) {
+        const toVal = slab.to === null || slab.to === undefined ? Infinity : slab.to;
+        if (proratedGross >= slab.from && proratedGross <= toVal) {
+          pt = slab.amount;
+          break;
+        }
       }
     }
 
@@ -127,6 +131,7 @@ class ReportService {
       include: [
         { model: Office, as: 'office', attributes: ['id', 'name', 'city'] },
         { model: Company, as: 'company', attributes: ['id', 'name'] },
+        { model: SalaryStructure, as: 'salaryStructures' },
       ],
       order: [['name', 'ASC']],
     });
@@ -158,6 +163,7 @@ class ReportService {
   async getPayrollReport({ month, year, office_id, search } = {}) {
     const { employees, monthlyMap, entryMap, cycle } = await this._getLedgerData(month, year, office_id, search);
     const { workingDays, elapsedWorkingDays } = await this._getDynamicDays(month, year);
+    const ptSlabs = await getPTSlabs();
 
     const rows = employees.map(emp => {
       const monthly = monthlyMap.get(emp.id);
@@ -166,18 +172,22 @@ class ReportService {
         ? (Number(monthly.absent_days) + Number(monthly.half_days) * 0.5)
         : (entry ? entry.absent_days : 0);
 
+      const activeStructure = emp.salaryStructures?.find(s => s.status === 'active');
+      const ptApplicable = activeStructure ? (activeStructure.pt_applicable !== false) : true;
+
       const calc = this._calculateRow({
         fixed_gross: emp.fixed_gross,
         pf_applicable: emp.pf_applicable,
         pf_ceiling: emp.pf_ceiling,
         esic_applicable: emp.esic_applicable,
+        pt_applicable: ptApplicable,
         absent_days: absentDays,
         previous_arrears: entry ? entry.previous_arrears : 0,
         bonus: entry ? entry.bonus : 0,
         incentive: entry ? entry.incentive : 0,
         loan_deduction: entry ? entry.loan_deduction : 0,
         other_deduction: entry ? entry.other_deduction : 0,
-      }, workingDays, elapsedWorkingDays);
+      }, workingDays, elapsedWorkingDays, ptSlabs);
 
       return {
         id: emp.id,

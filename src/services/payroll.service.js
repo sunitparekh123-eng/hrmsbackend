@@ -3,7 +3,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PAGINATION, PT_SLABS, PAYSLIP_STATUS } = require('../utils/constants');
-const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays, getPTSlabs } = require('../utils/payrollHelper');
 
 // ── Salary calculation helpers (40 % formula, mirroring payroll_ledger & offer_letter) ──
 
@@ -90,9 +90,11 @@ function calcStatutory(proratedGross, basic, basicForPf, pfApplicable, esicAppli
   return { pfEmployee, pfEmployer, esiEmployee, esiEmployer };
 }
 
-function calcPT(proratedGross) {
-  for (const slab of PT_SLABS) {
-    if (proratedGross >= slab.from && proratedGross <= slab.to) {
+function calcPT(proratedGross, slabs) {
+  const activeSlabs = slabs || PT_SLABS;
+  for (const slab of activeSlabs) {
+    const toVal = slab.to === null || slab.to === undefined ? Infinity : slab.to;
+    if (proratedGross >= slab.from && proratedGross <= toVal) {
       return slab.amount;
     }
   }
@@ -199,6 +201,7 @@ class PayrollService {
     // ── Fetch dynamic weekend policy & holidays for this month ──
     const weekendDays = await getWeekendDays();
     const holidays = await getHolidaysInMonth(year, month);
+    const ptSlabs = await getPTSlabs();
 
     // Total working days in the month (excluding weekends & holidays)
     const dynamicWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
@@ -264,6 +267,7 @@ class PayrollService {
       const pfApplicable = str ? str.pf_applicable : (emp.pf_applicable || false);
       const pfCeiling = str ? str.pf_ceiling : (emp.pf_ceiling || false);
       const esicApplicable = str ? str.esic_applicable : (emp.esic_applicable || false);
+      const ptApplicable = str ? (str.pt_applicable !== false) : true;
 
       // ── Contribution modes & rates (Phase 8) ──
       const pfContributionMode = str?.pf_contribution_mode || emp.pf_contribution_mode || 'shared';
@@ -322,7 +326,7 @@ class PayrollService {
         });
 
       // ── PT (slab lookup) ──
-      const professionalTax = calcPT(proratedGross);
+      const professionalTax = ptApplicable ? calcPT(proratedGross, ptSlabs) : 0;
 
       // ── Loan EMI Deductions ──
       const { Loan, LoanPayment } = require('../models');

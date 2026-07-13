@@ -3,7 +3,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { PAGINATION, PT_SLABS } = require('../utils/constants');
-const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays, getPTSlabs } = require('../utils/payrollHelper');
 const notificationService = require('./notification.service');
 
 /**
@@ -49,7 +49,7 @@ class PayrollLedgerService {
 
   // ── Calculation helpers (mirror frontend calculateProductionNet) ──
 
-  _calculateRow(row, daysInMonth = 28) {
+  _calculateRow(row, daysInMonth = 28, slabs) {
     const D = daysInMonth;
     const elapsedDays = row._elapsedDays != null ? Math.min(row._elapsedDays, D) : D;
     const payableDays = Math.max(0, elapsedDays - (row.absent_days || 0));
@@ -120,12 +120,16 @@ class PayrollLedgerService {
       }
     }
 
-    // PT — lookup from constants (Maharashtra slabs)
+    // PT — lookup from settings
     let pt = 0;
-    for (const slab of PT_SLABS) {
-      if (proratedGross >= slab.from && proratedGross <= slab.to) {
-        pt = slab.amount;
-        break;
+    if (row.pt_applicable !== false) {
+      const activeSlabs = slabs || PT_SLABS;
+      for (const slab of activeSlabs) {
+        const toVal = slab.to === null || slab.to === undefined ? Infinity : slab.to;
+        if (proratedGross >= slab.from && proratedGross <= toVal) {
+          pt = slab.amount;
+          break;
+        }
       }
     }
 
@@ -155,12 +159,14 @@ class PayrollLedgerService {
       await this._getDynamicDaysInMonth(currentMonth + 1, currentYear);
     const elapsedWorkingDays = countElapsedWorkingDays(currentYear, currentMonth + 1, now, null, weekendDays, holidays);
 
+    const ptSlabs = await getPTSlabs();
+
     let cycle = await PayrollCycle.findOne({
       where: { month_index: currentMonth, year: currentYear },
       include: [{
         model: PayrollEntry,
         as: 'entries',
-        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }] }],
+        include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }, { model: SalaryStructure, as: 'salaryStructures' }] }],
       }],
     });
 
@@ -176,7 +182,7 @@ class PayrollLedgerService {
         include: [{
           model: PayrollEntry,
           as: 'entries',
-          include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }] }],
+          include: [{ model: Employee, as: 'employee', include: [{ model: Office, as: 'office' }, { model: Company, as: 'company' }, { model: SalaryStructure, as: 'salaryStructures' }] }],
         }],
       });
     }
@@ -207,6 +213,9 @@ class PayrollLedgerService {
       const syncedLoan = loanMap.get(emp.id);
       const loanDeduction = syncedLoan !== undefined ? syncedLoan : (Number(entry.loan_deduction) || 0);
 
+      const activeStructure = emp.salaryStructures?.find(s => s.status === 'active');
+      const ptApplicable = activeStructure ? (activeStructure.pt_applicable !== false) : true;
+
       const baseData = {
         ...emp.toJSON(),
         ...entry.toJSON(),
@@ -215,6 +224,7 @@ class PayrollLedgerService {
         pf_applicable: emp.pf_applicable,
         pf_ceiling: emp.pf_ceiling,
         esic_applicable: emp.esic_applicable,
+        pt_applicable: ptApplicable,
         absent_days: absentDays,
       };
 
@@ -222,7 +232,7 @@ class PayrollLedgerService {
       const calculation = this._calculateRow({
         ...baseData,
         _elapsedDays: elapsedWorkingDays,
-      }, dynamicDays);
+      }, dynamicDays, ptSlabs);
 
       // 2. Projected calculation (Full Month Cost assuming no more absences)
       // For projected, we assume they work all remaining days, so elapsedDays = D.
@@ -230,7 +240,7 @@ class PayrollLedgerService {
       const projectedCalculation = this._calculateRow({
         ...baseData,
         _elapsedDays: dynamicDays, // full month elapsed
-      }, dynamicDays);
+      }, dynamicDays, ptSlabs);
 
       // We inject projectedFullMonthCTC and dailyCost directly from the backend
       const projectedMonthly = projectedCalculation.totalMonthlyCTC;

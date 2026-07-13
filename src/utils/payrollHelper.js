@@ -179,6 +179,29 @@ function toWorkingElapsed(calendarElapsed, year, month, weekendDays, holidays) {
   return null; // Deprecated, use countElapsedWorkingDays directly with upToDate
 }
 
+/**
+ * Read the Professional Tax slabs from SystemSetting or fallback to default
+ * Maharashtra slabs if not present.
+ *
+ * @returns {Promise<Array<{from: number, to: number|null, amount: number}>>}
+ */
+async function getPTSlabs() {
+  try {
+    const setting = await SystemSetting.findByPk('pt_slabs');
+    if (setting) {
+      return JSON.parse(setting.value);
+    }
+  } catch (e) {
+    logger.error(`[payrollHelper] Failed to read PT slabs: ${e.message}`);
+  }
+  return [
+    { from: 0, to: 18750, amount: 0 },
+    { from: 18751, to: 25000, amount: 125 },
+    { from: 25001, to: 33333, amount: 167 },
+    { from: 33334, to: null, amount: 208 },
+  ];
+}
+
 module.exports = {
   getWeekendDays,
   getHolidaysInMonth,
@@ -186,4 +209,5 @@ module.exports = {
   countWorkingDaysInMonth,
   countElapsedWorkingDays,
   toWorkingElapsed,
+  getPTSlabs,
 };

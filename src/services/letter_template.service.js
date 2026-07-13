@@ -1,6 +1,8 @@
 const { LetterTemplate, Employee, Office, Company, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const { getPTSlabs } = require('../utils/payrollHelper');
+
 
 class LetterTemplateService {
   /**
@@ -106,6 +108,7 @@ class LetterTemplateService {
    */
   async previewTemplate(templateId, employeeId, candidateData = null) {
     const template = await this.getTemplateById(templateId);
+    const ptSlabs = await getPTSlabs();
 
     let employee = null;
     
@@ -159,6 +162,7 @@ class LetterTemplateService {
         esic_contribution_mode: candidateData.esic_contribution_mode || 'shared',
         esic_employer_rate: Number(candidateData.esic_employer_rate ?? 0.0325),
         esic_employee_rate: Number(candidateData.esic_employee_rate ?? 0.0075),
+        pt_applicable: candidateData.pt_applicable !== false,
         office: { name: candidateData.office || 'Head Office', address: '', city: '', state: '' },
         company: companyDetails
       };
@@ -184,6 +188,7 @@ class LetterTemplateService {
     const pf_mode = employee.pf_contribution_mode || 'shared';
     const esic_applicable = employee.esic_applicable !== false;
     const esic_mode = employee.esic_contribution_mode || 'shared';
+    const pt_applicable = employee.pt_applicable !== false;
 
     // Calculations
     const pfBase = (pf_ceiling && basic > 15000) ? 15000 : basic;
@@ -205,7 +210,18 @@ class LetterTemplateService {
       if (esic_mode === 'shared' || esic_mode === 'employee_only') esiEmployee = Math.ceil(gross * esiEpeRate);
     }
 
-    const totalDeductions = pfEmployee + esiEmployee;
+    let professionalTax = 0;
+    if (pt_applicable) {
+      for (const slab of ptSlabs) {
+        const toLimit = slab.to === null || slab.to === undefined ? Infinity : slab.to;
+        if (gross >= slab.from && gross <= toLimit) {
+          professionalTax = slab.amount;
+          break;
+        }
+      }
+    }
+
+    const totalDeductions = pfEmployee + esiEmployee + professionalTax;
     const netTakeHome = gross - totalDeductions;
     const ctc = gross + pfEmployer + esiEmployer;
 
@@ -217,6 +233,7 @@ class LetterTemplateService {
     const esi_annual = esiEmployer * 12;
     const pf_emp_annual = pfEmployee * 12;
     const esi_emp_annual = esiEmployee * 12;
+    const pt_annual = professionalTax * 12;
     const deductions_annual = totalDeductions * 12;
     const net_annual = netTakeHome * 12;
     const ctc_annual = ctc * 12;
@@ -268,6 +285,8 @@ class LetterTemplateService {
       '[PF_Employee_Annual]': pf_emp_annual ? `₹ ${pf_emp_annual.toLocaleString('en-IN')}` : '—',
       '[ESI_Employee]': esiEmployee ? `₹ ${esiEmployee.toLocaleString('en-IN')}` : '—',
       '[ESI_Employee_Annual]': esi_emp_annual ? `₹ ${esi_emp_annual.toLocaleString('en-IN')}` : '—',
+      '[Professional_Tax]': professionalTax ? `₹ ${professionalTax.toLocaleString('en-IN')}` : '—',
+      '[Professional_Tax_Annual]': pt_annual ? `₹ ${pt_annual.toLocaleString('en-IN')}` : '—',
       '[Total_Deductions]': totalDeductions ? `₹ ${totalDeductions.toLocaleString('en-IN')}` : '—',
       '[Total_Deductions_Annual]': deductions_annual ? `₹ ${deductions_annual.toLocaleString('en-IN')}` : '—',
       '[Net_Take_Home]': netTakeHome ? `₹ ${netTakeHome.toLocaleString('en-IN')}` : '—',
@@ -366,6 +385,7 @@ Your Total Target Remuneration will be as detailed below. This includes your fix
     <tr style="font-weight: 700; background: rgba(0,0,0,0.02);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Gross Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: PF Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: ESI Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: Professional Tax (PT)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[Professional_Tax]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[Professional_Tax_Annual]</td></tr>
     <tr style="font-weight: 800; background: rgba(22,163,74,0.05);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">Net Take Home Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer PF Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer ESI Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer_Annual]</td></tr>
@@ -373,21 +393,22 @@ Your Total Target Remuneration will be as detailed below. This includes your fix
   </tbody>
 </table>
 
-<p><strong>3. Probation and Confirmation</strong><br/>
-You will be on probation for a period of six (6) months from your date of joining. Upon satisfactory completion of this period, your employment will be confirmed in writing. The Company reserves the right to extend the probation period if deemed necessary.</p>
+<p><strong>Terms & Conditions:</strong></p>
+<ul>
+  <li>You will be on probation for the initial period of 3 Months, which may be extended based on performance.</li>
+  <li>During employment, you must follow all company rules, policies, and procedures.</li>
+  <li>Your employment may be terminated with notice as per company policy.</li>
+  <li>Confidentiality of company data must be maintained at all times.</li>
+  <li>Salary will be calculated on the basis of Present days.</li>
+  <li>1 Day Leave PM will be applied after probation period.</li>
+</ul>
 
-<p><strong>4. Confidentiality and Non-Disclosure</strong><br/>
-During your employment and thereafter, you shall keep strictly confidential all business, technical, and commercial information related to the Company and its clients. You will be required to sign a comprehensive Non-Disclosure and Confidentiality Agreement on your date of joining.</p>
+<p><em>"It is mandatory for employee to serve a notice period of 1 month while resigning from the company. Resignation will not be considered valid without completing the required notice period."</em></p>
 
-<p><strong>5. Notice Period and Termination</strong><br/>
-During the probation period, either party may terminate this agreement by providing a written notice of thirty (30) days. Post confirmation, the required notice period for termination from either side will be sixty (60) days.</p>
+<p><strong>Please sign and return a copy of this letter within 2 days as acceptance of the offer.</strong></p>
 
-<p><strong>6. Acceptance</strong><br/>
-To indicate your acceptance of this offer and the associated terms, please sign and return a copy of this letter on or before the designated start date. This offer remains valid for seven (7) days from the date of issuance.</p>
-
-<p>We eagerly look forward to welcoming you to the <strong>[Company_Name]</strong> team and to a mutually rewarding association.</p>`,
+<p>We welcome you to our organization and wish you a successful career with us.</p>`,
       },
-      // ── APPOINTMENT LETTER ──
       {
         name: 'Appointment Letter',
         type: 'appointment',

@@ -12,7 +12,7 @@ const {
   BILLING_CYCLE_START_DAY,
   BILLING_CYCLE_END_DAY,
 } = require('../utils/constants');
-const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays } = require('../utils/payrollHelper');
+const { getWeekendDays, getHolidaysInMonth, countWorkingDaysInMonth, countElapsedWorkingDays, getPTSlabs } = require('../utils/payrollHelper');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 
@@ -44,9 +44,11 @@ function calcBreakdown(fixedGross, workingDays = 26, absentDays = 0, elapsedDays
 
 // calcElapsedDays removed as countElapsedWorkingDays now handles Dates natively
 
-function calcPT(gross) {
-  for (const slab of PT_SLABS) {
-    if (gross >= slab.from && gross <= slab.to) return slab.amount;
+function calcPT(gross, slabs) {
+  const activeSlabs = slabs || PT_SLABS;
+  for (const slab of activeSlabs) {
+    const toVal = slab.to === null || slab.to === undefined ? Infinity : slab.to;
+    if (gross >= slab.from && gross <= toVal) return slab.amount;
   }
   return 0;
 }
@@ -83,6 +85,7 @@ async function computeLivePayslip(employeeId, currentMonth, currentYear, monthly
   // ── Dynamic working days from weekend policy + holidays ──
   const weekendDays = await getWeekendDays();
   const holidays = await getHolidaysInMonth(currentYear, currentMonth);
+  const ptSlabs = await getPTSlabs();
   const workingDays = countWorkingDaysInMonth(currentYear, currentMonth, weekendDays, holidays);
 
   const conveyance = Number(str?.conveyance) || 0;
@@ -146,7 +149,8 @@ async function computeLivePayslip(employeeId, currentMonth, currentYear, monthly
     esiEmployer = Math.ceil(totalEarnings * esicEmployerRate);
   }
 
-  const professionalTax = calcPT(proratedGross);
+  const ptApplicable = str ? (str.pt_applicable !== false) : true;
+  const professionalTax = ptApplicable ? calcPT(proratedGross, ptSlabs) : 0;
   const totalDeductions = pfEmployee + esiEmployee + professionalTax;
   const netSalary = totalEarnings - totalDeductions;
   const ctc = totalEarnings + pfEmployer + esiEmployer;
@@ -417,7 +421,8 @@ class DashboardService {
     const weekendPolicy = weekendDays.length > 1 ? 'Sat + Sun' : 'Sunday only';
 
     // PT slab summary (highest three slabs)
-    const ptSlabs = PT_SLABS.filter(s => s.amount > 0).map(s => s.amount);
+    const dynamicPTSlabs = await getPTSlabs();
+    const ptSlabs = dynamicPTSlabs.filter(s => s.amount > 0).map(s => s.amount);
 
     return {
       rules: [
@@ -471,7 +476,7 @@ class DashboardService {
         pf_employer_rate: PF_RATES.EMPLOYER,
         esic_employee_rate: ESIC_RATES.EMPLOYEE,
         esic_employer_rate: ESIC_RATES.EMPLOYER,
-        pt_slabs: PT_SLABS,
+        pt_slabs: dynamicPTSlabs,
       },
     };
   }

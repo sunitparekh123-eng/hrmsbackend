@@ -145,7 +145,6 @@ class OfferLetterService {
         }
       }
       doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text(employee.company?.name || this.COMPANY_SHORT, textLeftX, headerY, { continued: false });
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b').text('HUMAN RESOURCES DEPARTMENT', textLeftX, doc.y + 4);
       
       // Right side
       const rightX = doc.page.width - 60 - 150;
@@ -267,26 +266,27 @@ class OfferLetterService {
       doc.fontSize(11).font('Helvetica').text(`   ${effectiveWorkDays} working days per month. Loss of Pay (LOP) calculated proportionally.`);
       doc.moveDown(0.5);
 
-      // ── 6. Probation ──
-      doc.fontSize(11).font('Helvetica-Bold').text('6. Probation Period:');
-      doc.fontSize(11).font('Helvetica').text('   6 months from date of joining. Upon successful completion, employment will be confirmed in writing.');
-      doc.moveDown(0.5);
+      // ── Terms & Conditions ──
+      doc.fontSize(11).font('Helvetica-Bold').text('Terms & Conditions:');
+      doc.moveDown(0.3);
+      doc.fontSize(10).font('Helvetica');
+      
+      const bulletIndent = 12;
+      doc.text('•  You will be on probation for the initial period of 3 Months, which may be extended based on performance.', { indent: bulletIndent });
+      doc.text('•  During employment, you must follow all company rules, policies, and procedures.', { indent: bulletIndent });
+      doc.text('•  Your employment may be terminated with notice as per company policy.', { indent: bulletIndent });
+      doc.text('•  Confidentiality of company data must be maintained at all times.', { indent: bulletIndent });
+      doc.text('•  Salary will be calculated on the basis of Present days.', { indent: bulletIndent });
+      doc.text('•  1 Day Leave PM will be applied after probation period.', { indent: bulletIndent });
+      doc.moveDown(0.6);
 
-      // ── 7. Leave ──
-      doc.fontSize(11).font('Helvetica-Bold').text('7. Leave Entitlement:');
-      doc.fontSize(11).font('Helvetica').text('   As per company policy. Details available on the HRMS portal after onboarding.');
-      doc.moveDown(0.5);
+      doc.font('Helvetica-Oblique').text('"It is mandatory for employee to serve a notice period of 1 month while resigning from the company. Resignation will not be considered valid without completing the required notice period."');
+      doc.moveDown(0.6);
 
-      // ── 8. Notice Period ──
-      doc.fontSize(11).font('Helvetica-Bold').text('8. Notice Period:');
-      doc.fontSize(11).font('Helvetica').text('   During probation: 15 days. After confirmation: 30 days or salary in lieu thereof.');
-      doc.moveDown(0.8);
+      doc.font('Helvetica-Bold').text('Please sign and return a copy of this letter within 2 days as acceptance of the offer.');
+      doc.moveDown(0.6);
 
-      // ── Acceptance note ──
-      doc.fontSize(11).font('Helvetica');
-      doc.text('Please confirm your acceptance by signing and returning a copy, and acknowledging through the HRMS portal.', { align: 'justify' });
-      doc.moveDown(0.5);
-      doc.text('We look forward to a long and mutually beneficial association. Welcome aboard!');
+      doc.font('Helvetica').text('We welcome you to our organization and wish you a successful career with us.');
       
       // ── Signatures (Variant1 Style) ──
       doc.y += 60;
@@ -298,7 +298,6 @@ class OfferLetterService {
       // Left signature
       doc.moveTo(60, sigY).lineTo(180, sigY).strokeColor('#0f172a').lineWidth(2).stroke();
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('AUTHORISED SIGNATORY', 60, sigY + 6);
-      doc.fontSize(9).font('Helvetica').fillColor('#64748b').text('HR Manager', 60, sigY + 18);
       
       // Right signature
       const rightSigX = doc.page.width - 60 - 120;
