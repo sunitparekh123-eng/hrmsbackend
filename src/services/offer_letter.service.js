@@ -125,8 +125,8 @@ class OfferLetterService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // ── Navy Top Bar ──
-      doc.rect(0, 0, doc.page.width, 14).fill('#0f172a');
+      // ── Black Top Bar ──
+      doc.rect(0, 0, doc.page.width, 14).fill('#000000');
       
       doc.y = 40;
       doc.x = 60;
@@ -144,34 +144,33 @@ class OfferLetterService {
           // ignore image errors, fall back to text-only header
         }
       }
-      doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text(employee.company?.name || this.COMPANY_SHORT, textLeftX, headerY, { continued: false });
+      doc.fontSize(22).font('Helvetica-Bold').fillColor('#000000').text(employee.company?.name || this.COMPANY_SHORT, textLeftX, headerY, { continued: false });
       
       // Right side
       const rightX = doc.page.width - 60 - 150;
-      doc.fontSize(10).font('Helvetica-Bold').fillColor('#475569');
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
       doc.text(`Ref: APAAR/HR/OL/${employee.emp_code}`, rightX, headerY, { width: 150, align: 'right' });
       doc.text(`Date: ${issuedDate}`, rightX, headerY + 14, { width: 150, align: 'right' });
-      doc.text(`Page: 1 of 1`, rightX, headerY + 28, { width: 150, align: 'right' });
       
       doc.y = Math.max(doc.y, headerY + 42) + 20;
       
       // Horizontal line
-      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#0f172a').lineWidth(2).stroke();
+      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#000000').lineWidth(2).stroke();
       doc.y += 32;
       
       // ── Title ──
-      doc.fontSize(15).font('Helvetica-Bold').fillColor('#16a34a').text('OFFER LETTER', 60, doc.y, { align: 'center', underline: true });
+      doc.fontSize(17).font('Helvetica-Bold').fillColor('#000000').text('OFFER LETTER', 60, doc.y, { align: 'center', underline: true });
       doc.y += 28;
       
       // ── Recipient ──
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('To,', 60, doc.y);
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000').text('To,', 60, doc.y);
       doc.font('Helvetica').text(employee.name);
       doc.text(`${employee.designation || 'TBD'}, ${employee.department || 'TBD'}`);
       doc.text(`${employee.company?.name || this.COMPANY_NAME} – ${employee.location || this.COMPANY_ADDRESS}`);
       doc.y += 20;
 
       // ── Body ──
-      doc.fontSize(11).lineGap(6);
+      doc.fontSize(12).lineGap(6);
       doc.text(`Dear ${employee.name},`, 60, doc.y);
       doc.moveDown(0.5);
 
@@ -208,24 +207,24 @@ class OfferLetterService {
       const rowH = 22;
 
       const drawTableHeader = (y) => {
-        doc.rect(60, y, 475, rowH).fill('#1a237e');
-        doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
+        doc.rect(60, y, 475, rowH).fill('#333333');
+        doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold');
         doc.text('Component', col1 + 5, y + 6, { width: col2 - col1 - 10 });
         doc.text('Monthly (₹)', col3, y + 6, { width: 130, align: 'right' });
-        doc.fillColor('#1e293b');
+        doc.fillColor('#000000');
       };
 
       const drawTableRow = (y, label, value, highlight) => {
         if (highlight) {
-          doc.rect(60, y, 475, rowH).fill('#e8eaf6');
-          doc.fillColor('#1e293b');
+          doc.rect(60, y, 475, rowH).fill('#f3f4f6');
+          doc.fillColor('#000000');
         } else {
-          doc.rect(60, y, 475, rowH).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+          doc.rect(60, y, 475, rowH).strokeColor('#cccccc').lineWidth(0.5).stroke();
         }
-        doc.fontSize(9).font('Helvetica');
+        doc.fontSize(10).font('Helvetica');
         doc.text(label, col1 + 5, y + 6, { width: col2 - col1 - 10 });
         doc.text(value.toLocaleString('en-IN'), col3, y + 6, { width: 130, align: 'right' });
-        doc.fillColor('#1e293b');
+        doc.fillColor('#000000');
         return y + rowH;
       };
 
@@ -246,30 +245,30 @@ class OfferLetterService {
       doc.moveDown(0.8);
 
       // Gross in words
-      doc.fontSize(10).font('Helvetica');
+      doc.fontSize(11).font('Helvetica');
       doc.text(`Gross Salary in Words: ${grossWords}`, { indent: 10 });
       doc.moveDown(0.8);
 
       // ── 4. Statutory Contributions ──
-      doc.fontSize(11).font('Helvetica-Bold').text('4. Statutory Contributions & CTC:');
-      doc.fontSize(11).font('Helvetica');
+      doc.fontSize(12).font('Helvetica-Bold').text('4. Statutory Contributions & CTC:');
+      doc.fontSize(12).font('Helvetica');
       doc.text(`   • PF: ${employee.pf_applicable !== false ? 'Applicable (12% of Basic)' : 'Not Applicable'}${employee.pf_ceiling ? ' (ceiling ₹15,000)' : ''}`);
       doc.text(`   • ESIC: ${employee.esic_applicable ? 'Applicable' : 'Not Applicable'}  • Professional Tax: As per state slab`);
       doc.moveDown(0.3);
-      doc.font('Helvetica-Bold').fontSize(11);
+      doc.font('Helvetica-Bold').fontSize(12);
       doc.text(`   Monthly CTC: ₹ ${ctc.toLocaleString('en-IN')} (${salaryToWords(ctc)})`);
 
       doc.moveDown(0.8);
 
       // ── 5. Working Days ──
-      doc.fontSize(11).font('Helvetica-Bold').text('5. Working Days:');
-      doc.fontSize(11).font('Helvetica').text(`   ${effectiveWorkDays} working days per month. Loss of Pay (LOP) calculated proportionally.`);
+      doc.fontSize(12).font('Helvetica-Bold').text('5. Working Days:');
+      doc.fontSize(12).font('Helvetica').text(`   ${effectiveWorkDays} working days per month. Loss of Pay (LOP) calculated proportionally.`);
       doc.moveDown(0.5);
 
       // ── Terms & Conditions ──
-      doc.fontSize(11).font('Helvetica-Bold').text('Terms & Conditions:');
+      doc.fontSize(12).font('Helvetica-Bold').text('Terms & Conditions:');
       doc.moveDown(0.3);
-      doc.fontSize(10).font('Helvetica');
+      doc.fontSize(11).font('Helvetica');
       
       const bulletIndent = 12;
       doc.text('•  You will be on probation for the initial period of 3 Months, which may be extended based on performance.', { indent: bulletIndent });
@@ -290,25 +289,36 @@ class OfferLetterService {
       
       // ── Signatures (Variant1 Style) ──
       doc.y += 60;
-      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
+      doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).strokeColor('#cccccc').lineWidth(1).stroke();
       doc.y += 40;
       
       const sigY = doc.y;
       
       // Left signature
-      doc.moveTo(60, sigY).lineTo(180, sigY).strokeColor('#0f172a').lineWidth(2).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('AUTHORISED SIGNATORY', 60, sigY + 6);
+      doc.moveTo(60, sigY).lineTo(180, sigY).strokeColor('#000000').lineWidth(2).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('AUTHORISED SIGNATORY', 60, sigY + 6);
       
       // Right signature
       const rightSigX = doc.page.width - 60 - 120;
-      doc.moveTo(rightSigX, sigY).lineTo(rightSigX + 120, sigY).strokeColor('#0f172a').lineWidth(2).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('EMPLOYEE SIGNATURE', rightSigX, sigY + 6);
-      doc.fontSize(9).font('Helvetica').fillColor('#64748b').text(employee.name, rightSigX, sigY + 18);
+      doc.moveTo(rightSigX, sigY).lineTo(rightSigX + 120, sigY).strokeColor('#000000').lineWidth(2).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('EMPLOYEE SIGNATURE', rightSigX, sigY + 6);
+      doc.fontSize(9).font('Helvetica').fillColor('#666666').text(employee.name, rightSigX, sigY + 18);
 
-      // ── Footer ──
-      const footerY = doc.page.height - 30;
-      doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor('#f1f5f9').lineWidth(1).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text(`${employee.company?.name || this.COMPANY_NAME} Pvt. Ltd. | ${employee.office?.city || 'City'}, ${employee.office?.state || 'State'} | hr@company.com | +91-XXXXX XXXXX`, 60, footerY, { align: 'center' });
+      // ── Dynamic Page Numbering & Footer for All Pages ──
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(i);
+
+        // Header Page Number
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
+        const pageNumY = i === 0 ? (headerY + 28) : 68;
+        doc.text(`Page: ${i + 1} of ${range.count}`, rightX, pageNumY, { width: 150, align: 'right' });
+
+        // Footer
+        const footerY = doc.page.height - 30;
+        doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor('#e5e7eb').lineWidth(1).stroke();
+        doc.fontSize(8).font('Helvetica').fillColor('#888888').text(`${employee.company?.name || this.COMPANY_NAME} Pvt. Ltd. | ${employee.office?.city || 'City'}, ${employee.office?.state || 'State'} | hr@company.com | +91-XXXXX XXXXX`, 60, footerY, { align: 'center' });
+      }
 
       doc.end();
     });

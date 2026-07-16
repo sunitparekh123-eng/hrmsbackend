@@ -385,10 +385,11 @@ class LeaveService {
     // Determine starting month
     let startMonth = balance.last_accrual_month;
     if (!startMonth) {
-      // First time: start from the month after joining
-      const employee = await Employee.findByPk(employeeId, { attributes: ['date_of_joining'] });
-      if (employee && employee.date_of_joining) {
-        const doj = new Date(employee.date_of_joining);
+      // First time: start from the month of joining (or created_at if joining is null)
+      const employee = await Employee.findByPk(employeeId, { attributes: ['date_of_joining', 'created_at'] });
+      if (employee) {
+        const date = employee.date_of_joining || employee.created_at;
+        const doj = new Date(date);
         startMonth = `${doj.getFullYear()}-${String(doj.getMonth() + 1).padStart(2, '0')}`;
       } else {
         startMonth = currentMonth;

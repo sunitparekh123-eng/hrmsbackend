@@ -277,20 +277,20 @@ class LetterTemplateService {
       '[HRA_Annual]': hra_annual ? `₹ ${hra_annual.toLocaleString('en-IN')}` : '_______________',
       '[Special_Allowance]': special ? `₹ ${special.toLocaleString('en-IN')}` : '_______________',
       '[Special_Allowance_Annual]': special_annual ? `₹ ${special_annual.toLocaleString('en-IN')}` : '_______________',
-      '[PF_Employer]': pfEmployer ? `₹ ${pfEmployer.toLocaleString('en-IN')}` : '—',
-      '[PF_Employer_Annual]': pf_annual ? `₹ ${pf_annual.toLocaleString('en-IN')}` : '—',
-      '[ESI_Employer]': esiEmployer ? `₹ ${esiEmployer.toLocaleString('en-IN')}` : '—',
-      '[ESI_Employer_Annual]': esi_annual ? `₹ ${esi_annual.toLocaleString('en-IN')}` : '—',
-      '[PF_Employee]': pfEmployee ? `₹ ${pfEmployee.toLocaleString('en-IN')}` : '—',
-      '[PF_Employee_Annual]': pf_emp_annual ? `₹ ${pf_emp_annual.toLocaleString('en-IN')}` : '—',
-      '[ESI_Employee]': esiEmployee ? `₹ ${esiEmployee.toLocaleString('en-IN')}` : '—',
-      '[ESI_Employee_Annual]': esi_emp_annual ? `₹ ${esi_emp_annual.toLocaleString('en-IN')}` : '—',
-      '[Professional_Tax]': professionalTax ? `₹ ${professionalTax.toLocaleString('en-IN')}` : '—',
-      '[Professional_Tax_Annual]': pt_annual ? `₹ ${pt_annual.toLocaleString('en-IN')}` : '—',
-      '[Total_Deductions]': totalDeductions ? `₹ ${totalDeductions.toLocaleString('en-IN')}` : '—',
-      '[Total_Deductions_Annual]': deductions_annual ? `₹ ${deductions_annual.toLocaleString('en-IN')}` : '—',
-      '[Net_Take_Home]': netTakeHome ? `₹ ${netTakeHome.toLocaleString('en-IN')}` : '—',
-      '[Net_Take_Home_Annual]': net_annual ? `₹ ${net_annual.toLocaleString('en-IN')}` : '—',
+      '[PF_Employer]': pfEmployer ? `₹ ${pfEmployer.toLocaleString('en-IN')}` : '₹ 0',
+      '[PF_Employer_Annual]': pf_annual ? `₹ ${pf_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[ESI_Employer]': esiEmployer ? `₹ ${esiEmployer.toLocaleString('en-IN')}` : '₹ 0',
+      '[ESI_Employer_Annual]': esi_annual ? `₹ ${esi_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[PF_Employee]': pfEmployee ? `₹ ${pfEmployee.toLocaleString('en-IN')}` : '₹ 0',
+      '[PF_Employee_Annual]': pf_emp_annual ? `₹ ${pf_emp_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[ESI_Employee]': esiEmployee ? `₹ ${esiEmployee.toLocaleString('en-IN')}` : '₹ 0',
+      '[ESI_Employee_Annual]': esi_emp_annual ? `₹ ${esi_emp_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[Professional_Tax]': professionalTax ? `₹ ${professionalTax.toLocaleString('en-IN')}` : '₹ 0',
+      '[Professional_Tax_Annual]': pt_annual ? `₹ ${pt_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[Total_Deductions]': totalDeductions ? `₹ ${totalDeductions.toLocaleString('en-IN')}` : '₹ 0',
+      '[Total_Deductions_Annual]': deductions_annual ? `₹ ${deductions_annual.toLocaleString('en-IN')}` : '₹ 0',
+      '[Net_Take_Home]': netTakeHome ? `₹ ${netTakeHome.toLocaleString('en-IN')}` : '₹ 0',
+      '[Net_Take_Home_Annual]': net_annual ? `₹ ${net_annual.toLocaleString('en-IN')}` : '₹ 0',
       '[CTC]': ctc ? `₹ ${ctc.toLocaleString('en-IN')}` : '_______________',
       '[CTC_Annual]': ctc_annual ? `₹ ${ctc_annual.toLocaleString('en-IN')}` : '_______________',
       '[Bank_Name]': employee.bank_name || '_______________',
@@ -362,7 +362,7 @@ class LetterTemplateService {
         is_active: true,
         content: `<p>Dear <strong>[Employee_Name]</strong>,</p>
 
-<p>Following our recent discussions, we are delighted to extend an offer of employment to you on behalf of <strong>[Company_Name]</strong> (hereinafter referred to as the "Company"). We have been consistently impressed by your background and expertise, and we are confident that you will make a significant contribution to our organization's growth and success.</p>
+<p>Following our recent discussions, we are delighted to extend an offer of employment to you on behalf of <strong>[Company_Name]</strong>. We have been consistently impressed by your background and expertise, and we are confident that you will make a significant contribution to our organization's growth and success.</p>
 
 <p><strong>1. Appointment and Position</strong><br/>
 You are being offered the position of <strong>[Job_Title]</strong> in the <strong>[Department]</strong> department. Your initial place of posting will be at our <strong>[Office_Location]</strong> office. Your tentative date of joining is set for <strong>[Start_Date]</strong>, subject to the successful completion of standard background verification.</p>
@@ -383,10 +383,10 @@ Your Total Target Remuneration will be as detailed below. This includes your fix
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">House Rent Allowance (HRA)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[HRA]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[HRA_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Special Allowance</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Special_Allowance]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Special_Allowance_Annual]</td></tr>
     <tr style="font-weight: 700; background: rgba(0,0,0,0.02);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Gross Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Salary_Annual]</td></tr>
-    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: PF Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[PF_Employee_Annual]</td></tr>
-    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: ESI Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[ESI_Employee_Annual]</td></tr>
-    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">Less: Professional Tax (PT)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[Professional_Tax]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #dc2626;">-[Professional_Tax_Annual]</td></tr>
-    <tr style="font-weight: 800; background: rgba(22,163,74,0.05);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">Net Take Home Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1); color: #16a34a;">[Net_Take_Home_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Less: PF Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[PF_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[PF_Employee_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Less: ESI Contribution (Employee)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[ESI_Employee]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[ESI_Employee_Annual]</td></tr>
+    <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Less: Professional Tax (PT)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[Professional_Tax]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">-[Professional_Tax_Annual]</td></tr>
+    <tr style="font-weight: 800; background: rgba(0,0,0,0.05);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Net Take Home Salary</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Net_Take_Home]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[Net_Take_Home_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer PF Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[PF_Employer_Annual]</td></tr>
     <tr><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Add: Employer ESI Contribution</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[ESI_Employer_Annual]</td></tr>
     <tr style="font-weight: 900; background: rgba(0,0,0,0.08);"><td style="padding: 8px 12px; border: 1px solid rgba(0,0,0,0.1);">Total Cost to Company (CTC)</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC]</td><td style="padding: 8px 12px; text-align: right; border: 1px solid rgba(0,0,0,0.1);">[CTC_Annual]</td></tr>
