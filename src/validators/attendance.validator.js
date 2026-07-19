@@ -27,6 +27,7 @@ const adminLiveQuerySchema = Joi.object({
   // Allow a high limit so the frontend can export ALL matching employees
   // in a single request (not just the current page of 8).
   limit: Joi.number().integer().min(1).max(100000).optional(),
+  department: Joi.string().allow('', null).optional(),
 });
 
 const adminHistoryQuerySchema = Joi.object({
@@ -37,6 +38,7 @@ const adminHistoryQuerySchema = Joi.object({
   to: Joi.date().iso().optional(),
   page: Joi.number().integer().min(1).optional(),
   limit: Joi.number().integer().min(1).max(100).optional(),
+  department: Joi.string().allow('', null).optional(),
 });
 
 const adminMonthlyQuerySchema = Joi.object({
@@ -45,6 +47,7 @@ const adminMonthlyQuerySchema = Joi.object({
   search: Joi.string().allow('', null).optional(),
   month: Joi.number().integer().min(1).max(12).optional(),
   year: Joi.number().integer().min(2020).max(2030).optional(),
+  department: Joi.string().allow('', null).optional(),
 });
 
 const manualEntrySchema = Joi.object({

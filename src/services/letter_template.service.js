@@ -400,7 +400,7 @@ Your Total Target Remuneration will be as detailed below. This includes your fix
   <li>Your employment may be terminated with notice as per company policy.</li>
   <li>Confidentiality of company data must be maintained at all times.</li>
   <li>Salary will be calculated on the basis of Present days.</li>
-  <li>1 Day Leave PM will be applied after probation period.</li>
+  <li>2 Day Leave PM will be applied after probation period.</li>
 </ul>
 
 <p><em>"It is mandatory for employee to serve a notice period of 1 month while resigning from the company. Resignation will not be considered valid without completing the required notice period."</em></p>

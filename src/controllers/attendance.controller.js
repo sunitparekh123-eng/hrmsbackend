@@ -101,8 +101,8 @@ class AttendanceController {
   // Admin: Get live attendance for all employees
   async getLiveAttendance(req, res, next) {
     try {
-      const { office_id, company_id, search, status, page, limit } = req.query;
-      const result = await attendanceService.getLiveAttendance({ office_id, company_id, search, status, page, limit });
+      const { office_id, company_id, search, status, page, limit, department } = req.query;
+      const result = await attendanceService.getLiveAttendance({ office_id, company_id, search, status, page, limit, department });
       return success(res, 'Live attendance fetched', result, 200);
     } catch (err) {
       logger.error(`Get live attendance error: ${err.message}`);
@@ -113,8 +113,8 @@ class AttendanceController {
   // Admin: Get all attendance history
   async getAllAttendanceHistory(req, res, next) {
     try {
-      const { page, limit, from, to, office_id, company_id, search } = req.query;
-      const result = await attendanceService.getAllAttendanceHistory({ page, limit, from, to, office_id, company_id, search });
+      const { page, limit, from, to, office_id, company_id, search, department } = req.query;
+      const result = await attendanceService.getAllAttendanceHistory({ page, limit, from, to, office_id, company_id, search, department });
       return success(res, 'Attendance history fetched', result, 200);
     } catch (err) {
       logger.error(`Get all attendance history error: ${err.message}`);
@@ -125,8 +125,8 @@ class AttendanceController {
   // Admin: Get monthly attendance grid for all employees
   async getAllMonthlyAttendance(req, res, next) {
     try {
-      const { month, year, office_id, company_id, search } = req.query;
-      const result = await attendanceService.getAllMonthlyAttendance({ month, year, office_id, company_id, search });
+      const { month, year, office_id, company_id, search, department } = req.query;
+      const result = await attendanceService.getAllMonthlyAttendance({ month, year, office_id, company_id, search, department });
       return success(res, 'Monthly attendance grid fetched', result, 200);
     } catch (err) {
       logger.error(`Get all monthly attendance error: ${err.message}`);

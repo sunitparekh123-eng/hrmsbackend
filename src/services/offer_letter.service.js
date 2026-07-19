@@ -276,7 +276,7 @@ class OfferLetterService {
       doc.text('•  Your employment may be terminated with notice as per company policy.', { indent: bulletIndent });
       doc.text('•  Confidentiality of company data must be maintained at all times.', { indent: bulletIndent });
       doc.text('•  Salary will be calculated on the basis of Present days.', { indent: bulletIndent });
-      doc.text('•  1 Day Leave PM will be applied after probation period.', { indent: bulletIndent });
+      doc.text('•  2 Day Leave PM will be applied after probation period.', { indent: bulletIndent });
       doc.moveDown(0.6);
 
       doc.font('Helvetica-Oblique').text('"It is mandatory for employee to serve a notice period of 1 month while resigning from the company. Resignation will not be considered valid without completing the required notice period."');

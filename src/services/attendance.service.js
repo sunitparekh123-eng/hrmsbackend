@@ -152,6 +152,23 @@ function _formatTime(time, timeZone = TIMEZONE) {
   return `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${ampm}`;
 }
 
+/**
+ * Helper to convert a database TIME string (assumed to be in UTC) to the target timezone (IST) and format it.
+ */
+function _formatRecordTime(time, dateStr, timeZone = TIMEZONE) {
+  if (!time) return '---';
+  if (time instanceof Date) {
+    return _formatTime(time, timeZone);
+  }
+  try {
+    const utcDate = new Date(`${dateStr}T${time}Z`);
+    return _formatTime(utcDate, timeZone);
+  } catch (e) {
+    logger.error(`Error formatting record time: ${e.message}`);
+    return '---';
+  }
+}
+
 class AttendanceService {
   async punchIn(employeeId, latitude, longitude) {
     const today = new Date();
@@ -598,7 +615,7 @@ class AttendanceService {
   }
 
   // Admin: Get today's attendance for all employees (Live Status tab)
-  async getLiveAttendance({ office_id, company_id, search, status: statusFilter, page = 1, limit = 8 } = {}) {
+  async getLiveAttendance({ office_id, company_id, search, status: statusFilter, page = 1, limit = 8, department } = {}) {
     const today = getLocalDateString(new Date());
 
     // Check if today is an active public holiday
@@ -623,11 +640,12 @@ class AttendanceService {
     }
     if (office_id) empWhere.office_id = office_id;
     if (company_id) empWhere.company_id = company_id;
+    if (department) empWhere.department = department;
 
     const { rows: employees, count: totalEmployees } = await Employee.findAndCountAll({
       where: empWhere,
       include: ['office', 'company'],
-      attributes: ['id', 'emp_code', 'name', 'designation', 'profile_image'],
+      attributes: ['id', 'emp_code', 'name', 'designation', 'profile_image', 'department'],
     });
 
     const empIds = employees.map(e => e.id);
@@ -695,9 +713,10 @@ class AttendanceService {
         id: emp.emp_code,
         name: emp.name,
         designation: emp.designation || '',
+        department: emp.department || '---',
         status,
-        punchIn: punchIn ? _formatTime(punchIn) : '---',
-        punchOut: punchOut ? _formatTime(punchOut) : '---',
+        punchIn: punchIn ? _formatRecordTime(punchIn, today) : '---',
+        punchOut: punchOut ? _formatRecordTime(punchOut, today) : '---',
         location: locationName,
         company: emp.company?.name || '---',
         distance,
@@ -745,7 +764,7 @@ class AttendanceService {
   }
 
   // Admin: Get all attendance history (History tab)
-  async getAllAttendanceHistory({ page = 1, limit = 20, from, to, office_id, company_id, search } = {}) {
+  async getAllAttendanceHistory({ page = 1, limit = 20, from, to, office_id, company_id, search, department } = {}) {
     const where = {};
     if (from && to) {
       where.date = { [Op.between]: [from, to] };
@@ -764,6 +783,7 @@ class AttendanceService {
     }
     if (office_id) empWhere.office_id = office_id;
     if (company_id) empWhere.company_id = company_id;
+    if (department) empWhere.department = department;
 
     // Device name mapping for frontend display
     const deviceLabel = (method) => {
@@ -772,7 +792,7 @@ class AttendanceService {
     };
 
     // Get employees first
-    const allEmployees = await Employee.findAll({ where: empWhere, include: ['office', 'company'], attributes: ['id', 'emp_code', 'name'] });
+    const allEmployees = await Employee.findAll({ where: empWhere, include: ['office', 'company'], attributes: ['id', 'emp_code', 'name', 'department'] });
     const empIds = allEmployees.map(e => e.id);
     const empMap = new Map(allEmployees.map(e => [e.id, e]));
     const officeMap = new Map(allEmployees.map(e => [e.id, e.office]));
@@ -824,12 +844,13 @@ class AttendanceService {
         id: emp?.emp_code || '-',
         hub: hubName,
         company: emp?.company?.name || '---',
+        department: emp?.department || '---',
         shift: 'General',
         hours: r.total_hours ? `${Math.floor(r.total_hours)}h ${Math.round((r.total_hours % 1) * 60)}m` : '---',
         ot: overtimeStr,
         status,
-        in: r.check_in_time ? _formatTime(r.check_in_time) : '---',
-        out: r.check_out_time ? _formatTime(r.check_out_time) : '---',
+        in: r.check_in_time ? _formatRecordTime(r.check_in_time, r.date) : '---',
+        out: r.check_out_time ? _formatRecordTime(r.check_out_time, r.date) : '---',
         device: deviceLabel(r.check_in_method),
         fine: r.late_by_minutes > 0 ? r.late_by_minutes * 2 : 0,
         dist: r.check_in_distance ? `${Math.round(r.check_in_distance)}m` : '---',
@@ -869,7 +890,7 @@ class AttendanceService {
   }
 
   // Admin: Get monthly attendance grid for all employees
-  async getAllMonthlyAttendance({ month, year, office_id, company_id, search } = {}) {
+  async getAllMonthlyAttendance({ month, year, office_id, company_id, search, department } = {}) {
     const localToday = getLocalDate(new Date());
     const currentMonth = month ? parseInt(month) : localToday.getMonth() + 1;
     const currentYear = year ? parseInt(year) : localToday.getFullYear();
@@ -883,11 +904,12 @@ class AttendanceService {
     }
     if (office_id) empWhere.office_id = office_id;
     if (company_id) empWhere.company_id = company_id;
+    if (department) empWhere.department = department;
 
     const employees = await Employee.findAll({
       where: empWhere,
       include: ['office', 'company'],
-      attributes: ['id', 'emp_code', 'name', 'designation', 'fixed_gross'],
+      attributes: ['id', 'emp_code', 'name', 'designation', 'fixed_gross', 'department'],
     });
 
     const empIds = employees.map(e => e.id);
@@ -1024,6 +1046,7 @@ class AttendanceService {
         id: emp.emp_code,
         name: emp.name,
         role: emp.designation || 'Employee',
+        department: emp.department || '---',
         hub: emp.office?.name || '---',
         company: emp.company?.name || '---',
         salary,
