@@ -207,6 +207,10 @@ class AttendanceService {
       where: { company_id: employee.company_id, is_active: true }
     });
 
+    console.log(`[GEO-FENCE DEBUG] PunchIn request from employee ${employeeId}. Coordinates: lat=${latitude}, lon=${longitude}`);
+    console.log(`[GEO-FENCE DEBUG] Employee company_id=${employee.company_id}, office_id=${employee.office_id}`);
+    console.log(`[GEO-FENCE DEBUG] Total offices fetched: ${offices.length}`);
+
     let matchingOffice = null;
     let minDistance = null;
     let primaryDistance = null;
@@ -216,6 +220,8 @@ class AttendanceService {
         latitude, longitude,
         office.latitude, office.longitude
       );
+
+      console.log(`[GEO-FENCE DEBUG] Checking office: "${office.name}" (ID: ${office.id}) coordinates: lat=${office.latitude}, lon=${office.longitude}, radius=${office.radius_meters}m. Calculated distance: ${dist}m`);
 
       if (employee.office_id === office.id) {
         primaryDistance = dist;
@@ -247,11 +253,18 @@ class AttendanceService {
     const allowedStart = shiftStartMins - 120;
     const allowedEnd = shiftEndMins;
 
+    let normStart = allowedStart;
+    if (normStart < 0) {
+      normStart += 1440;
+    }
+
     let isWithinWindow = false;
-    if (allowedStart < 0) {
-      isWithinWindow = (localCheckInMins >= (allowedStart + 1440)) || (localCheckInMins <= allowedEnd);
+    if (allowedEnd < normStart) {
+      // Midnight-crossing shift
+      isWithinWindow = (localCheckInMins >= normStart) || (localCheckInMins <= allowedEnd);
     } else {
-      isWithinWindow = (localCheckInMins >= allowedStart) && (localCheckInMins <= allowedEnd);
+      // Normal shift
+      isWithinWindow = (localCheckInMins >= normStart) && (localCheckInMins <= allowedEnd);
     }
 
     if (env.NODE_ENV && env.NODE_ENV.trim() === 'development') {
@@ -262,10 +275,25 @@ class AttendanceService {
       throw new AppError(`Punch in is only allowed during shift hours (from ${_formatTime(employee.shift_start_time || '10:00:00')} to ${_formatTime(employee.shift_end_time || '19:00:00')} with 2 hours early buffer).`, 403);
     }
 
-    // Apply grace period: an employee is "late" only if they punch in AFTER (shift start + grace minutes).
-    // e.g. shift start 10:00 + 10 min grace => late only after 10:10.
-    const isLate = localCheckInMins > (shiftStartMins + LATE_GRACE_MINUTES);
-    const lateByMinutes = isLate ? (localCheckInMins - shiftStartMins) : 0;
+    // Determine late minutes (respect LATE_GRACE_MINUTES buffer)
+    let lateByMinutes = 0;
+    if (shiftEndMins < shiftStartMins) {
+      // Midnight-crossing shift
+      if (localCheckInMins >= shiftStartMins) {
+        lateByMinutes = localCheckInMins - shiftStartMins;
+      } else if (localCheckInMins <= shiftEndMins) {
+        lateByMinutes = (1440 - shiftStartMins) + localCheckInMins;
+      }
+    } else {
+      // Normal shift
+      if (localCheckInMins > shiftStartMins) {
+        lateByMinutes = localCheckInMins - shiftStartMins;
+      }
+    }
+    const isLate = lateByMinutes > LATE_GRACE_MINUTES;
+    if (!isLate) {
+      lateByMinutes = 0;
+    }
     const status = isLate ? 'late' : 'present';
 
     const record = await AttendanceRecord.create({
@@ -314,10 +342,13 @@ class AttendanceService {
     if (!employee) {
       throw new AppError('Employee profile not found', 400);
     }
-
     const offices = await Office.findAll({
       where: { company_id: employee.company_id, is_active: true }
     });
+
+    console.log(`[GEO-FENCE DEBUG] PunchOut request from employee ${employeeId}. Coordinates: lat=${latitude}, lon=${longitude}`);
+    console.log(`[GEO-FENCE DEBUG] Employee company_id=${employee.company_id}, office_id=${employee.office_id}`);
+    console.log(`[GEO-FENCE DEBUG] Total offices fetched: ${offices.length}`);
 
     let matchingOffice = null;
     let minDistance = null;
@@ -328,6 +359,8 @@ class AttendanceService {
         latitude, longitude,
         office.latitude, office.longitude
       );
+
+      console.log(`[GEO-FENCE DEBUG] Checking office: "${office.name}" (ID: ${office.id}) coordinates: lat=${office.latitude}, lon=${office.longitude}, radius=${office.radius_meters}m. Calculated distance: ${dist}m`);
 
       if (employee.office_id === office.id) {
         primaryDistance = dist;
@@ -368,20 +401,40 @@ class AttendanceService {
     // Check for early exit and overtime using shift_end_time
     const localCheckOutMins = getLocalMinutesFromMidnight(today);
     const shiftEndMins = timeStringToMinutes(employee ? employee.shift_end_time : null, 1140); // default 7:00 PM = 1140 mins
+    const shiftStartMins = timeStringToMinutes(employee ? employee.shift_start_time : null, 600); // default 10:00 AM = 600 mins
 
-    const isEarlyExit = localCheckOutMins < shiftEndMins;
-    const earlyExitMinutes = isEarlyExit ? (shiftEndMins - localCheckOutMins) : 0;
+    let isEarlyExit = false;
+    let earlyExitMinutes = 0;
+    let overtimeMinutes = 0;
+
+    if (shiftEndMins < shiftStartMins) {
+      // Midnight-crossing shift
+      if (localCheckOutMins >= shiftStartMins) {
+        // Punched out before midnight -> early exit
+        isEarlyExit = true;
+        earlyExitMinutes = (1440 - localCheckOutMins) + shiftEndMins;
+      } else if (localCheckOutMins < shiftEndMins) {
+        // Punched out after midnight but before shift end -> early exit
+        isEarlyExit = true;
+        earlyExitMinutes = shiftEndMins - localCheckOutMins;
+      } else {
+        // Punched out after shiftEndMins (overtime)
+        overtimeMinutes = localCheckOutMins - shiftEndMins;
+      }
+    } else {
+      // Normal shift
+      if (localCheckOutMins < shiftEndMins) {
+        isEarlyExit = true;
+        earlyExitMinutes = shiftEndMins - localCheckOutMins;
+      } else {
+        overtimeMinutes = localCheckOutMins - shiftEndMins;
+      }
+    }
 
     // Update status if half day
     let status = record.status;
     if (totalMinutes < 240) { // Less than 4 hours = half day
       status = 'half_day';
-    }
-
-    // Calculate overtime (minutes past shift end)
-    let overtimeMinutes = 0;
-    if (localCheckOutMins > shiftEndMins) {
-      overtimeMinutes = localCheckOutMins - shiftEndMins;
     }
 
     await record.update({
@@ -474,11 +527,18 @@ class AttendanceService {
     const allowedStart = shiftStartMins - 120; // 2 hour early buffer
     const allowedEnd = shiftEndMins;
 
+    let normStart = allowedStart;
+    if (normStart < 0) {
+      normStart += 1440;
+    }
+
     let isWithinWindow = false;
-    if (allowedStart < 0) {
-      isWithinWindow = (localMins >= (allowedStart + 1440)) || (localMins <= allowedEnd);
+    if (allowedEnd < normStart) {
+      // Midnight-crossing shift
+      isWithinWindow = (localMins >= normStart) || (localMins <= allowedEnd);
     } else {
-      isWithinWindow = (localMins >= allowedStart) && (localMins <= allowedEnd);
+      // Normal shift
+      isWithinWindow = (localMins >= normStart) && (localMins <= allowedEnd);
     }
 
     if (env.NODE_ENV && env.NODE_ENV.trim() === 'development') {
@@ -537,9 +597,88 @@ class AttendanceService {
       order: [['date', 'ASC']],
     });
 
+    // Dynamically calculate and fill in missing records for past days in the cycle
+    const recordMap = new Map(dailyRecords.map(r => [r.date, r]));
+    const weekendDays = await _getWeekendDays();
+    const holidays = await getHolidaysInMonth(currentYear, currentMonth);
+
+    const { LeaveRequest } = require('../models');
+    const approvedLeaves = await LeaveRequest.findAll({
+      where: {
+        employee_id: employeeId,
+        status: 'approved',
+        from_date: { [Op.lte]: endDateStr },
+        to_date: { [Op.gte]: startDateStr }
+      }
+    });
+
+    const isLeaveDate = (dateStr) => {
+      return approvedLeaves.some(l => dateStr >= l.from_date && dateStr <= l.to_date);
+    };
+
+    const localTodayStr = getLocalDateString(new Date());
+    const endLimitDate = new Date(endDateStr) < new Date(localTodayStr) ? new Date(endDateStr) : new Date(localTodayStr);
+
+    const filledRecords = [];
+    let dObj = new Date(startDateStr);
+
+    while (dObj <= endLimitDate) {
+      const yyyy = dObj.getFullYear();
+      const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dObj.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const dayOfWeek = dObj.getDay();
+
+      const isHoliday = isHolidayDate(dateStr, holidays);
+      const isWeekendDay = weekendDays.includes(dayOfWeek);
+
+      const existing = recordMap.get(dateStr);
+      if (existing) {
+        filledRecords.push(existing);
+      } else {
+        let status = 'absent';
+        let remarks = 'No punch-in recorded';
+
+        if (isWeekendDay) {
+          status = 'weekend';
+          remarks = 'Weekly Off';
+        } else if (isHoliday) {
+          status = 'holiday';
+          const h = holidays.find(h => dateStr >= h.start_date && dateStr <= h.end_date);
+          remarks = h ? `Public Holiday: ${h.name}` : 'Public Holiday';
+        } else if (isLeaveDate(dateStr)) {
+          status = 'holiday'; // show as a holiday/paid off day
+          remarks = 'Approved Leave';
+        }
+
+        filledRecords.push({
+          id: `virtual-${dateStr}`,
+          employee_id: employeeId,
+          date: dateStr,
+          status,
+          remarks,
+          check_in_time: null,
+          check_out_time: null,
+          total_hours: 0,
+          total_minutes: 0,
+        });
+      }
+
+      dObj.setDate(dObj.getDate() + 1);
+    }
+
+    // Keep any future records (e.g. tour days in the future)
+    dailyRecords.forEach(r => {
+      if (new Date(r.date) > endLimitDate && !filledRecords.some(fr => fr.date === r.date)) {
+        filledRecords.push(r);
+      }
+    });
+
+    filledRecords.sort((a, b) => a.date.localeCompare(b.date));
+
     return {
       monthly: monthlyRecord,
-      daily: dailyRecords,
+      daily: filledRecords,
     };
   }
 
@@ -1203,28 +1342,87 @@ class AttendanceService {
       },
     });
 
-    const presentDays = records.filter(r => r.status === 'present').length;
-    const lateDays = records.filter(r => r.status === 'late').length;
-    const halfDays = records.filter(r => r.status === 'half_day').length;
-    const absentDays = records.filter(r => r.status === 'absent').length;
-    const tourDays = records.filter(r => r.status === 'tour').length;
-
     // ── Fetch dynamic weekend policy & holidays ──
     const weekendDays = await _getWeekendDays();
     const holidays = await getHolidaysInMonth(year, month);
 
-    // Count how many attendance records fall on weekend days
+    // Fetch approved leaves overlapping the cycle
+    const { LeaveRequest } = require('../models');
+    const approvedLeaves = await LeaveRequest.findAll({
+      where: {
+        employee_id: employeeId,
+        status: 'approved',
+        from_date: { [Op.lte]: cycleEnd },
+        to_date: { [Op.gte]: cycleStart }
+      }
+    });
+
+    const isLeaveDate = (dStr) => {
+      return approvedLeaves.some(l => dStr >= l.from_date && dStr <= l.to_date);
+    };
+
+    // Calculate daily metrics by looping over every day in the cycle up to today
+    let presentDays = 0;
+    let lateDays = 0;
+    let halfDays = 0;
+    let absentDays = 0;
+    let tourDays = 0;
     let weekendDaysCount = 0;
     let holidayDaysCount = 0;
-    for (const r of records) {
-      const d = new Date(r.date);
-      const dow = d.getDay();
-      if (weekendDays.includes(dow)) {
-        weekendDaysCount++;
-      } else if (isHolidayDate(r.date, holidays)) {
-        holidayDaysCount++;
+
+    const recordMap = new Map(records.map(r => [r.date, r]));
+    const localTodayStr = getLocalDateString(new Date());
+    const endLimitDate = new Date(cycleEnd) < new Date(localTodayStr) ? new Date(cycleEnd) : new Date(localTodayStr);
+
+    let dObj = new Date(cycleStart);
+    while (dObj <= endLimitDate) {
+      const yStr = dObj.getFullYear();
+      const mStr = String(dObj.getMonth() + 1).padStart(2, '0');
+      const dStr = String(dObj.getDate()).padStart(2, '0');
+      const dateKey = `${yStr}-${mStr}-${dStr}`;
+      const dayOfWeek = dObj.getDay();
+
+      const isHoliday = isHolidayDate(dateKey, holidays);
+      const isWeekendDay = weekendDays.includes(dayOfWeek);
+
+      const r = recordMap.get(dateKey);
+      if (r) {
+        if (r.status === 'present') presentDays++;
+        else if (r.status === 'late') lateDays++;
+        else if (r.status === 'half_day') halfDays++;
+        else if (r.status === 'tour') tourDays++;
+        else if (r.status === 'absent') absentDays++;
+        else if (r.status === 'weekend') weekendDaysCount++;
+        else if (r.status === 'holiday') holidayDaysCount++;
+      } else {
+        if (isWeekendDay) {
+          weekendDaysCount++;
+        } else if (isHoliday) {
+          holidayDaysCount++;
+        } else if (isLeaveDate(dateKey)) {
+          // Approved leave acts like holiday (paid day off, not absent)
+          holidayDaysCount++;
+        } else {
+          // No record, no weekend, no holiday, no leave -> count as Absent
+          absentDays++;
+        }
       }
+
+      dObj.setDate(dObj.getDate() + 1);
     }
+
+    // Keep stats for any future records that fell outside the limit
+    records.forEach(r => {
+      if (new Date(r.date) > endLimitDate) {
+        if (r.status === 'present') presentDays++;
+        else if (r.status === 'late') lateDays++;
+        else if (r.status === 'half_day') halfDays++;
+        else if (r.status === 'tour') tourDays++;
+        else if (r.status === 'absent') absentDays++;
+        else if (r.status === 'weekend') weekendDaysCount++;
+        else if (r.status === 'holiday') holidayDaysCount++;
+      }
+    });
 
     // Calculate working days (excluding weekends AND holidays)
     const totalWorkingDays = countWorkingDaysInMonth(year, month, weekendDays, holidays);
