@@ -219,12 +219,19 @@ class AttendanceService {
 
       if (employee.office_id === office.id) {
         primaryDistance = dist;
+        if (dist <= office.radius_meters) {
+          matchingOffice = office;
+          minDistance = dist;
+          break; // Primary office matched, stop searching
+        }
       }
 
+      // If we haven't matched the primary office, find the closest valid one
       if (dist <= office.radius_meters) {
-        matchingOffice = office;
-        minDistance = dist;
-        break; // Match found!
+        if (matchingOffice === null || dist < minDistance) {
+          matchingOffice = office;
+          minDistance = dist;
+        }
       }
     }
 
@@ -331,12 +338,19 @@ class AttendanceService {
 
       if (employee.office_id === office.id) {
         primaryDistance = dist;
+        if (dist <= office.radius_meters) {
+          matchingOffice = office;
+          minDistance = dist;
+          break; // Primary office matched, stop searching
+        }
       }
 
+      // If we haven't matched the primary office, find the closest valid one
       if (dist <= office.radius_meters) {
-        matchingOffice = office;
-        minDistance = dist;
-        break; // Match found!
+        if (matchingOffice === null || dist < minDistance) {
+          matchingOffice = office;
+          minDistance = dist;
+        }
       }
     }
 
