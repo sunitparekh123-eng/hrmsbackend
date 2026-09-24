@@ -10,6 +10,10 @@ const routes = require('./routes');
 
 const app = express();
 
+// ── Trust Proxy ──
+// Required for express-rate-limit when running behind a reverse proxy (like Nginx)
+app.set('trust proxy', 1);
+
 // ── Security ──
 app.use(helmet());
 
