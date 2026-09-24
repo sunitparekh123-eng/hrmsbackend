@@ -9,7 +9,10 @@ const emailService = require('./email.service');
 
 class AuthService {
   async login(email, password) {
-    const employee = await Employee.findOne({ where: { email } });
+    const employee = await Employee.findOne({ 
+      where: { email },
+      include: ['office', 'company']
+    });
     if (!employee) {
       throw new AppError('Invalid email or password', 401);
     }
@@ -52,8 +55,8 @@ class AuthService {
         profile_image: employee.profile_image,
         is_first_login: employee.is_first_login,
         date_of_joining: employee.date_of_joining,
-        location: employee.location,
-        company_name: employee.company_name,
+        location: employee.office ? employee.office.name : employee.location,
+        company_name: employee.company ? employee.company.name : employee.company_name,
         fixed_gross: employee.fixed_gross,
         basic_salary: employee.basic_salary,
         pf_applicable: employee.pf_applicable,
@@ -531,8 +534,8 @@ class AuthService {
       pf_number: employee.pf_number,
       uan: employee.uan,
       // Location
-      location: employee.location,
-      company_name: employee.company_name,
+      location: employee.office ? employee.office.name : employee.location,
+      company_name: employee.company ? employee.company.name : employee.company_name,
       // Emergency
       emergency_contact_name: employee.emergency_contact_name,
       emergency_contact_relation: employee.emergency_contact_relation,

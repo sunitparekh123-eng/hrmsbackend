@@ -73,6 +73,17 @@ class EmployeeService {
     delete updateData.role; // Role changes through separate endpoint
     delete updateData.emp_code; // Emp code is immutable
 
+    // Sync denormalized text fields if foreign keys changed
+    if (updateData.office_id && updateData.office_id !== employee.office_id) {
+      const office = await Office.findByPk(updateData.office_id);
+      if (office) updateData.location = office.name;
+    }
+    if (updateData.company_id && updateData.company_id !== employee.company_id) {
+      const { Company } = require('../models');
+      const company = await Company.findByPk(updateData.company_id);
+      if (company) updateData.company_name = company.name;
+    }
+
     await employee.update(updateData);
     logger.info(`Employee ${employee.emp_code} updated`);
 
